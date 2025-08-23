@@ -1,0 +1,7 @@
+
+# Root requirements.txt (hierarchical)
+# Each submodule requirements.txt is referenced below
+
+-r api/requirements.txt
+-r admin/requirements.txt
+-r utils/requirements.txt

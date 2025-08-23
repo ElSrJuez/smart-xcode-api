@@ -3,49 +3,23 @@
 # Main objective is to have simple, robust object logging that retains the transactions' native schema.
 
 
-import configparser
-import logging
+
 import os
 import json
 from fastapi import FastAPI, Request, Response
 import httpx
 import uvicorn
+from utils import config, logging as logmod
 
-# Read backend config from config.ini
-config = configparser.ConfigParser()
-config.read('config.ini')
-backend_url = config.get('XTREAM CODES api', 'iptv_url')
-backend_username = config.get('XTREAM CODES api', 'iptv_username')
-backend_password = config.get('XTREAM CODES api', 'iptv_password')
-logging_phase = config.get('log', 'logging_phase', fallback='raw').lower()
-
-
-# Read force_non_gzip from [fiddling] section
-force_non_gzip = False
-if config.has_section('fiddling'):
-	force_non_gzip = config.getboolean('fiddling', 'force_non_gzip', fallback=False)
-
-# Read override_creds from [auth] section
-override_creds = False
-if config.has_section('auth'):
-	override_creds = config.getboolean('auth', 'override_creds', fallback=False)
-
-
-# Set up logging directories
-LOG_DIR = os.path.join(os.path.dirname(__file__), 'log', logging_phase)
-os.makedirs(LOG_DIR, exist_ok=True)
-TROUBLESHOOT_DIR = os.path.join(os.path.dirname(__file__), 'log', 'troubleshooting')
-os.makedirs(TROUBLESHOOT_DIR, exist_ok=True)
-
-# Set up troubleshooting logger
-troubleshooting_log_file = os.path.join(TROUBLESHOOT_DIR, 'troubleshooting.log')
-troubleshooting_logger = logging.getLogger('troubleshooting')
-troubleshooting_logger.setLevel(logging.INFO)
-if not troubleshooting_logger.handlers:
-	handler = logging.FileHandler(troubleshooting_log_file, encoding='utf-8')
-	formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-	handler.setFormatter(formatter)
-	troubleshooting_logger.addHandler(handler)
+# Preload all config values needed for this module
+_BACKEND_URL = config.get('api.apipxy', 'target_url')
+_BACKEND_USERNAME = config.get('api.apipxy', 'backend_username')
+_BACKEND_PASSWORD = config.get('api.apipxy', 'backend_password')
+_ALLOWED_METHODS = [m.strip().upper() for m in config.get('api.apipxy', 'allowed_methods').split(',')]
+_API_PORT = config.get('api.apipxy', 'api_port', int)
+_LOGGING_API_LOG_FILE = config.get('api.apipxy', 'logging_api_log_file')
+_FORCE_NON_GZIP = config.get('api.apipxy', 'force_non_gzip', lambda v: v.lower() == 'true')
+_OVERRIDE_CREDS = config.get('api.apipxy', 'override_creds', lambda v: v.lower() == 'true')
 
 app = FastAPI()
 
@@ -68,39 +42,42 @@ def log_transaction(request: Request, response: httpx.Response, req_body: bytes)
 			}
 		}
 		# Add schema for discovery
-		if logging_phase == 'discovery':
+		if 'discovery' in _LOGGING_API_LOG_FILE:
 			log_entry['schema'] = {
 				'request': list(log_entry['request'].keys()),
 				'response': list(log_entry['response'].keys())
 			}
 		# Append to a single JSONL file for additive logging
-		log_file = os.path.join(LOG_DIR, 'discovery.jsonl')
-		with open(log_file, 'a', encoding='utf-8') as f:
+		with open(_LOGGING_API_LOG_FILE, 'a', encoding='utf-8') as f:
 			f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
 	except Exception as e:
-		logging.error(f"Logging error: {e}")
+		logmod.log_message('error', f"Logging error: {e}")
+
 
 
 
 @app.api_route('/{path:path}', methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 async def proxy(request: Request, path: str):
-	url = f"{backend_url}/{path}"
-	method = request.method
+	method = request.method.upper()
+	if method not in _ALLOWED_METHODS:
+		logmod.log_message('warning', f"Blocked disallowed method: {method} for path: {path}")
+		return Response(content="Method not allowed", status_code=405)
+
+	url = f"{_BACKEND_URL}/{path}"
 	headers = dict(request.headers)
 	headers.pop('host', None)
 	body = await request.body()
 
 	params = dict(request.query_params)
-	if override_creds:
-		# Always override username and password
-		params['username'] = backend_username
-		params['password'] = backend_password
+	if _OVERRIDE_CREDS:
+		params['username'] = _BACKEND_USERNAME
+		params['password'] = _BACKEND_PASSWORD
 	else:
-		params.setdefault('username', backend_username)
-		params.setdefault('password', backend_password)
+		params.setdefault('username', _BACKEND_USERNAME)
+		params.setdefault('password', _BACKEND_PASSWORD)
 
-	async with httpx.AsyncClient() as client:
-		try:
+	try:
+		async with httpx.AsyncClient() as client:
 			resp = await client.request(
 				method,
 				url,
@@ -109,16 +86,17 @@ async def proxy(request: Request, path: str):
 				content=body,
 				timeout=30.0
 			)
-		except httpx.RequestError as exc:
-			troubleshooting_logger.error(f"Request error: {exc}\nRequest: {method} {url}\nParams: {params}\nHeaders: {headers}\nBody: {body[:200] if body else None}")
-			return Response(content="Backend error", status_code=502)
+	except httpx.RequestError as exc:
+		logmod.log_message('error', f"Request error: {exc} | Request: {method} {url} | Params: {params} | Headers: {headers} | Body: {body[:200] if body else None}")
+		return Response(content="Backend error", status_code=502)
 
-	# Log backend errors (status >= 400) to troubleshooting log
 	if resp.status_code >= 400:
-		troubleshooting_logger.error(f"Backend error {resp.status_code}: {resp.text[:500]}\nRequest: {method} {url}\nParams: {params}\nHeaders: {headers}\nBody: {body[:200] if body else None}")
+		logmod.log_message('error', f"Backend error {resp.status_code}: {resp.text[:500]} | Request: {method} {url} | Params: {params} | Headers: {headers} | Body: {body[:200] if body else None}")
 
 	log_transaction(request, resp, body)
 	return Response(content=resp.content, status_code=resp.status_code, headers=dict(resp.headers))
 
 if __name__ == "__main__":
-	uvicorn.run("apipxy:app", host="0.0.0.0", port=8000, reload=True)
+	import sys
+	port = _API_PORT if len(sys.argv) == 1 else int(sys.argv[1])
+	uvicorn.run("api.apipxy:app", host="0.0.0.0", port=port, reload=True)

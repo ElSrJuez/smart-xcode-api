@@ -21,10 +21,18 @@ import logging
 import os
 import inspect
 from logging.handlers import RotatingFileHandler
-from utils.config import (
-	ADMIN_LOGGING, ADMIN_LOG_PATH, API_LOG_FILE, API_DISCOVER_LOG_PATH, API_RAW_PATH,
-	GLOBAL_LOGGING_FORMAT, GLOBAL_COMMON_LOG_FILE
-)
+
+
+from utils import config
+
+# Preload all config values needed for logging into private variables
+_ADMIN_LOG_PATH = config.get('admin.admin_app', 'logging_admin_log_path')
+_API_LOG_FILE = config.get('api.apipxy', 'logging_api_log_file')
+_COMMON_LOG_FILE = config.get('app', 'logging_common_log_file')
+_ADMIN_LOG_LEVEL = config.get('admin.admin_app', 'logging', str).upper()
+_COMMON_LOG_LEVEL = config.get('app', 'logging_common_level', str).upper()
+_LOG_FORMAT = config.get('utils.logging', 'format')
+
 
 # Private: logger cache to avoid duplicate handlers
 _loggers = {}
@@ -35,21 +43,26 @@ def _get_log_file_for_caller():
 	for frame in stack[1:]:
 		mod = frame.filename.replace('\\', '/').lower()
 		if 'admin' in mod:
-			return ADMIN_LOG_PATH
+			return _ADMIN_LOG_PATH
 		if 'api' in mod:
-			return API_LOG_FILE
-	return GLOBAL_COMMON_LOG_FILE
+			return _API_LOG_FILE
+	return _COMMON_LOG_FILE
 
 def _get_logger():
 	log_file = _get_log_file_for_caller()
 	if log_file not in _loggers:
 		logger = logging.getLogger(log_file)
-		logger.setLevel(getattr(logging, ADMIN_LOGGING, logging.WARNING))
+		# Use admin level if admin, else fallback to app level, else WARNING
+		if log_file == _ADMIN_LOG_PATH:
+			level = getattr(logging, _ADMIN_LOG_LEVEL, logging.WARNING)
+		else:
+			level = getattr(logging, _COMMON_LOG_LEVEL, logging.WARNING)
+		logger.setLevel(level)
 		# Avoid duplicate handlers
 		if not logger.handlers:
 			os.makedirs(os.path.dirname(log_file), exist_ok=True)
 			handler = RotatingFileHandler(log_file, maxBytes=2*1024*1024, backupCount=3, encoding='utf-8')
-			handler.setFormatter(logging.Formatter(GLOBAL_LOGGING_FORMAT))
+			handler.setFormatter(logging.Formatter(_LOG_FORMAT))
 			logger.addHandler(handler)
 		_loggers[log_file] = logger
 	return _loggers[log_file]
