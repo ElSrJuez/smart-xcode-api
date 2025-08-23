@@ -1,4 +1,5 @@
 
+
 # Deduplication logic is now in api/discovery.py for modularity.
 from utils.discovery import deduplicate_object
 """
@@ -33,8 +34,10 @@ from tinydb.middlewares import CachingMiddleware
 from utils import config, logging
 
 
-_db_path = config.get('db', 'discovery_db_path')
-_schema_path = config.get('db', 'schema_path')
+
+# _PRIVATE_VARIABLES loaded once during module init
+_DISCOVERY_DB_PATH = None
+_SCHEMA_PATH = None
 
 
 # TinyDB instance (singleton)
@@ -46,100 +49,130 @@ def _get_db():
 
 
 
+
 def _self_init():
-	global _db
-	if not os.path.exists(_db_path):
+	global _db, _DISCOVERY_DB_PATH, _SCHEMA_PATH
+	if _DISCOVERY_DB_PATH is None or _SCHEMA_PATH is None:
+		_DISCOVERY_DB_PATH = config.get('db', 'discovery_db_path')
+		_SCHEMA_PATH = config.get('db', 'schema_path')
+	if not os.path.exists(_DISCOVERY_DB_PATH):
 		# Create empty DB file
-		with open(_db_path, 'w', encoding='utf-8') as f:
+		with open(_DISCOVERY_DB_PATH, 'w', encoding='utf-8') as f:
 			json.dump({}, f)
-		logging.log_message('info', f"Created new discovery DB at {_db_path}")
-	if not os.path.exists(_schema_path):
-		raise FileNotFoundError(f"Schema file not found: {_schema_path}")
+		logging.log_message('info', f"Created new discovery DB at {_DISCOVERY_DB_PATH}")
+	if not os.path.exists(_SCHEMA_PATH):
+		raise FileNotFoundError(f"Schema file not found: {_SCHEMA_PATH}")
 	# Always re-initialize TinyDB instance to ensure _db is valid
-	_db = TinyDB(_db_path, storage=CachingMiddleware(JSONStorage))
+	_db = TinyDB(_DISCOVERY_DB_PATH, storage=CachingMiddleware(JSONStorage))
 
 
 # Load schema on module import
 _schema = None
 def _load_schema():
 	global _schema
-	with open(_schema_path, 'r', encoding='utf-8') as f:
+	with open(_SCHEMA_PATH, 'r', encoding='utf-8') as f:
 		_schema = json.load(f)
-_self_init()
-_load_schema()
+
+try:
+	_self_init()
+	_load_schema()
+	logging.log_message('info', f"DBOPS INIT: Using DB path: {_DISCOVERY_DB_PATH}, Schema path: {_SCHEMA_PATH}")
+except Exception as e:
+	logging.log_message('error', f"DBOPS INIT FAILED: {e}")
+	raise
 
 
 def add_object(category, data):
 	"""Add a new object to the database in the given category."""
-	validate_against_schema(category, data)
-	db = _get_db()
-	table = db.table(category)
-	obj_id = table.insert(data)
-	logging.log_message('info', f"Added object to {category}: {obj_id}")
-	return obj_id
+	try:
+		validate_against_schema(category, data)
+		db = _get_db()
+		table = db.table(category)
+		obj_id = table.insert(data)
+		logging.log_message('info', f"Added object to {category}: {obj_id}")
+		return obj_id
+	except Exception as e:
+		logging.log_message('error', f"add_object failed for {category} with data={data}: {e}")
+		raise
 
 
 def update_object(category, identifiers, data):
 	"""Update an existing object in the database by identifiers."""
-	validate_against_schema(category, data)
-	db = _get_db()
-	table = db.table(category)
-	q = Query()
-	cond = None
-	for k, v in identifiers.items():
-		cond = (q[k] == v) if cond is None else (cond & (q[k] == v))
-	updated = table.update(data, cond)
-	logging.log_message('info', f"Updated object(s) in {category} with {identifiers}: {updated}")
-	return updated
+	try:
+		validate_against_schema(category, data)
+		db = _get_db()
+		table = db.table(category)
+		q = Query()
+		cond = None
+		for k, v in identifiers.items():
+			cond = (q[k] == v) if cond is None else (cond & (q[k] == v))
+		updated = table.update(data, cond)
+		logging.log_message('info', f"Updated object(s) in {category} with {identifiers}: {updated}")
+		return updated
+	except Exception as e:
+		logging.log_message('error', f"update_object failed for {category} with identifiers={identifiers}, data={data}: {e}")
+		raise
 
 
 def get_object(category, identifiers):
 	"""Retrieve a single object by identifiers. Returns None if not found."""
-	db = _get_db()
-	table = db.table(category)
-	q = Query()
-	cond = None
-	for k, v in identifiers.items():
-		cond = (q[k] == v) if cond is None else (cond & (q[k] == v))
-	result = table.get(cond)
-	if result is None:
-		logging.log_message('warning', f"No object found in {category} with {identifiers}")
-	else:
-		logging.log_message('info', f"Fetched object from {category} with {identifiers}: {result}")
-	return result
+	try:
+		db = _get_db()
+		table = db.table(category)
+		q = Query()
+		cond = None
+		for k, v in identifiers.items():
+			cond = (q[k] == v) if cond is None else (cond & (q[k] == v))
+		result = table.get(cond)
+		if result is None:
+			logging.log_message('warning', f"No object found in {category} with {identifiers}")
+		else:
+			logging.log_message('info', f"Fetched object from {category} with {identifiers}: {result}")
+		return result
+	except Exception as e:
+		logging.log_message('error', f"get_object failed for {category} with identifiers={identifiers}: {e}")
+		raise
 
 
 def find_objects(category, filters=None):
 	"""Find objects in a category matching filters. If filters is None or empty, returns all objects."""
-	db = _get_db()
-	table = db.table(category)
-	if not filters:
-		results = table.all()
-		logging.log_message('info', f"Found all objects in {category}: {len(results)} found")
+	try:
+		db = _get_db()
+		table = db.table(category)
+		if not filters:
+			results = table.all()
+			logging.log_message('info', f"Found all objects in {category}: {len(results)} found")
+			return results
+		q = Query()
+		cond = None
+		for k, v in filters.items():
+			cond = (q[k] == v) if cond is None else (cond & (q[k] == v))
+		results = table.search(cond) if cond is not None else table.all()
+		logging.log_message('info', f"Found objects in {category} with {filters}: {len(results)} found")
 		return results
-	q = Query()
-	cond = None
-	for k, v in filters.items():
-		cond = (q[k] == v) if cond is None else (cond & (q[k] == v))
-	results = table.search(cond) if cond is not None else table.all()
-	logging.log_message('info', f"Found objects in {category} with {filters}: {len(results)} found")
-	return results
+	except Exception as e:
+		logging.log_message('error', f"find_objects failed for {category} with filters={filters}: {e}")
+		raise
 
 
 def delete_object(category, identifiers):
 	"""Delete an object from the database by identifiers. Returns number of objects deleted."""
-	db = _get_db()
-	table = db.table(category)
-	q = Query()
-	cond = None
-	for k, v in identifiers.items():
-		cond = (q[k] == v) if cond is None else (cond & (q[k] == v))
-	deleted = table.remove(cond)
-	if deleted:
-		logging.log_message('info', f"Deleted object(s) from {category} with {identifiers}: {deleted}")
-	else:
-		logging.log_message('warning', f"No object deleted from {category} with {identifiers}")
-	return len(deleted) if deleted else 0
+	try:
+		db = _get_db()
+		table = db.table(category)
+		q = Query()
+		cond = None
+		for k, v in identifiers.items():
+			cond = (q[k] == v) if cond is None else (cond & (q[k] == v))
+		deleted = table.remove(cond)
+		if deleted:
+			logging.log_message('info', f"Deleted object(s) from {category} with {identifiers}: {deleted}")
+		else:
+			logging.log_message('warning', f"No object deleted from {category} with {identifiers}")
+		return len(deleted) if deleted else 0
+	except Exception as e:
+		logging.log_message('error', f"delete_object failed for {category} with identifiers={identifiers}: {e}")
+		raise
 
 def touch_object(category, identifiers, data):
 	"""Add if new, or update last_seen if exists. Deduplicates before upsert. Returns object id or update count."""
