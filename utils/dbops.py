@@ -1,35 +1,6 @@
-import hashlib
-def deduplicate_object(category, data):
-	"""
-	Deduplicate an object in the given category using normalized identifiers.
-	If a duplicate exists, merge fields and return the merged object.
-	If not, return the original data.
-	"""
-	db = _get_db()
-	table = db.table(category)
-	dedup_keys = []
-	if 'id' in data:
-		dedup_keys.append(data['id'])
-	if 'identifiers' in data and isinstance(data['identifiers'], list):
-		dedup_keys.extend(data['identifiers'])
-	norm_keys = set(str(k).strip().lower() for k in dedup_keys if k)
-	if not norm_keys:
-		return data  # No deduplication possible
-	q = Query()
-	cond = None
-	for k in norm_keys:
-		cond = (q.id == k) if cond is None else (cond | (q.id == k))
-		if 'identifiers' in data:
-			cond = cond | (q.identifiers.any([k]))
-	# TinyDB search always returns a list
-	matches = table.search(cond) if cond is not None else []
-	if matches:
-		# Merge with the first match only
-		existing = matches[0]
-		merged = dict(existing)
-		merged.update({k: v for k, v in data.items() if v is not None})
-		return merged
-	return data
+
+# Deduplication logic is now in api/discovery.py for modularity.
+from api.discovery import deduplicate_object
 """
 git ---
 """
