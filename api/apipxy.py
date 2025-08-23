@@ -62,7 +62,7 @@ def log_transaction(request: Request, response: httpx.Response, req_body: bytes)
 
 
 
-@app.api_route('/{path:path}', methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+@app.api_route('/{path:path}', methods=_ALLOWED_METHODS)
 async def proxy(request: Request, path: str):
 	method = request.method.upper()
 	if method not in _ALLOWED_METHODS:
@@ -104,5 +104,6 @@ async def proxy(request: Request, path: str):
 
 if __name__ == "__main__":
 	import sys
+	_HOST = config.get('app', 'host')
 	port = _API_PORT if len(sys.argv) == 1 else int(sys.argv[1])
-	uvicorn.run("api.apipxy:app", host="0.0.0.0", port=port, reload=True)
+	uvicorn.run("api.apipxy:app", host=_HOST, port=port, reload=True)
