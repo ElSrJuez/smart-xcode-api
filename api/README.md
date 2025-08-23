@@ -15,6 +15,16 @@ This document describes the API proxy feature of the smart-xcode-api project, as
 - **No In-Code Defaults:** Any missing or invalid configuration results in immediate, explicit failure.
 - **Separation of Concerns:** The proxy logic is isolated in `api/apipxy.py`, with no cross-module configuration or logging code.
 
+### Object Discovery Feature
+The api service actively but silently discovers new standard iptv objects like streams, categories, epg source associations, etc. up to *but not including* individual programmes.
+The incoming data is assumed to be imperfect/dirty, with undesirable prefixes, duplicity, orphaned, inconsistent syntax among other common flaws
+The incoming data should also be assumed to be potentially, undesirable large / many records
+The schema used for these objects is synthesis/minimal, as the main objective is for potential grouping and summarization avenues - recognizing that specifics is enemy #1 of grouping.
+In the future the discovery feature will also support automatic smart discovery of recurring string/tags that can be used for inclusion/exclusion filters (i.e, substrings for grouping variants of the same channel (1, 2, 3 or "HD", "SD"))
+When complete jsonl is enabled, this feature also logs a jsonl object with the payload of each transaction so that the detail can be used for troubleshooting and manual analysis.
+Since the XC API is not well documented and the M3U text objects and the EPG XML objects may also be made available from the endpoint, this log stores records of the payloads (not entire API transactions).
+Minimal tracking with timestamping is another feature, when an object was first discovered - so that automatic age based cleanup can be done of unused/unrequested stale objects.
+
 ## Configuration
 All proxy settings must be defined in the `[api.apipxy]` section of `config.ini`. Example:
 
