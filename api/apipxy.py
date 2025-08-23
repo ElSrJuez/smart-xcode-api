@@ -12,7 +12,6 @@ import uvicorn
 from utils import config, logging as logmod
 
 
-
 # Preload all config values needed for this module, matching config.ini
 _BACKEND_URL = config.get('api.apipxy', 'target_url')
 _BACKEND_USERNAME = config.get('api.apipxy', 'target_username')
@@ -20,8 +19,8 @@ _BACKEND_PASSWORD = config.get('api.apipxy', 'target_password')
 _API_PORT = config.get('api.apipxy', 'api_port', int)
 _LOGGING_API_LOG_FILE = config.get('api.apipxy', 'logging_api_log_file')
 _LOGGING_API_RAW_PATH = config.get('api.apipxy', 'logging_api_raw_path')
-_DISCOVER_JSONL_PATH = config.get('api.apipxy', 'logging_api_discover_jsonl_path')
-_DISCOVER_JSONL_ENABLED = config.get('api.apipxy', 'logging_api_discover_jsonl_enabled', lambda v: v.lower() == 'true')
+_LOGGING_API_DISCOVER_JSONL_PATH = config.get('api.apipxy', 'logging_api_discover_jsonl_path')
+_LOGGING_API_DISCOVER_JSONL_ENABLED = config.get('api.apipxy', 'logging_api_discover_jsonl_enabled', lambda v: v.lower() == 'true')
 _FORCE_NON_GZIP = config.get('api.apipxy', 'fiddling_force_non_gzip', lambda v: v.lower() == 'true')
 _OVERRIDE_CREDS = config.get('api.apipxy', 'override_creds', lambda v: v.lower() == 'true')
 _LOGGING_PHASE = config.get('api.apipxy', 'logging_phase')
@@ -29,50 +28,62 @@ _LOGGING_PHASE = config.get('api.apipxy', 'logging_phase')
 # Allowed methods must be set in config.ini; fail fast if missing
 _ALLOWED_METHODS = [m.strip().upper() for m in config.get('api.apipxy', 'allowed_methods').split(',')]
 
-# JSONL transaction logging for payloads (not full HTTP transaction)
-def log_jsonl_payload(payload: dict):
-	"""
-	Log the payload of a transaction as a JSONL object for troubleshooting/manual analysis.
-	Uses preloaded config variables only.
-	"""
-	if not _DISCOVER_JSONL_ENABLED:
-		return
-	try:
-		os.makedirs(_DISCOVER_JSONL_PATH, exist_ok=True)
-		log_file = os.path.join(_DISCOVER_JSONL_PATH, 'discovery.jsonl')
-		entry = dict(payload)
-		entry['logged_at'] = __import__('datetime').datetime.utcnow().isoformat() + 'Z'
-		with open(log_file, 'a', encoding='utf-8') as f:
-			f.write(json.dumps(entry, ensure_ascii=False) + '\n')
-	except Exception as e:
-		logmod.log_message('error', f"JSONL logging error: {e}")
-
 app = FastAPI()
 
 def log_transaction(request: Request, response: httpx.Response, req_body: bytes):
 	try:
-			from utils import config as _log_config
-			log_level = _log_config.get('app', 'logging_common_level', str).upper()
-			# If DEBUG, log full URL with query string and all details
-			if log_level == 'DEBUG':
-				full_url = str(response.request.url) if hasattr(response, 'request') and hasattr(response.request, 'url') else str(request.url)
-				logmod.log_message(
-					'debug',
-					f"[apipxy] {request.method} {full_url} status={response.status_code} req_headers={dict(request.headers)} req_body={req_body.decode(errors='replace') if req_body else None} resp_headers={dict(response.headers)} resp_body={response.text}"
-				)
-			else:
-				# Minimal log for non-debug
-				logmod.log_message(
-					'info',
-					f"[apipxy] {request.method} {request.url} status={response.status_code}"
-				)
+		from datetime import datetime
+		req_headers = dict(request.headers)
+		resp_headers = dict(response.headers)
+		# Always build the full request URL with query params
+		from urllib.parse import urlencode
+		url = str(request.url)
+		# Compose summary log entry (no payloads)
+		summary_entry = {
+			'timestamp': datetime.utcnow().isoformat() + 'Z',
+			'method': request.method,
+			'url': url,
+			'status_code': response.status_code,
+			'request_headers': req_headers,
+			'response_headers': resp_headers
+		}
+		# Determine log level for minimal summary
+		import logging
+		log_level = logging.getLevelName(logmod._get_logger().level)
+		if log_level == 'INFO':
+			# Minimal summary: just method, url, status
+			logmod.log_message('info', f"{request.method} {url} {response.status_code}")
+		else:
+			# Full summary (still no payloads)
+			logmod.log_message('debug', f"{request.method} {url} {response.status_code} | req_headers={req_headers} resp_headers={resp_headers}")
+		# JSONL payload logging if enabled
+		if _LOGGING_API_DISCOVER_JSONL_ENABLED:
+			jsonl_entry = {
+				'timestamp': datetime.utcnow().isoformat() + 'Z',
+				'request': {
+					'method': request.method,
+					'url': url,
+					'headers': req_headers,
+					'body': req_body.decode(errors='replace') if req_body else None
+				},
+				'response': {
+					'status_code': response.status_code,
+					'headers': resp_headers,
+					'body': response.text
+				}
+			}
+			# Write to JSONL file in discovery path
+			jsonl_path = os.path.join(_LOGGING_API_DISCOVER_JSONL_PATH, 'discovery.jsonl')
+			os.makedirs(os.path.dirname(jsonl_path), exist_ok=True)
+			with open(jsonl_path, 'a', encoding='utf-8') as f:
+				f.write(json.dumps(jsonl_entry, ensure_ascii=False) + '\n')
 	except Exception as e:
 		logmod.log_message('error', f"Logging error: {e}")
 
 
 
 
-@app.api_route('/{path:path}', methods=_ALLOWED_METHODS)
+@app.api_route('/{path:path}', methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 async def proxy(request: Request, path: str):
 	method = request.method.upper()
 	if method not in _ALLOWED_METHODS:
@@ -82,6 +93,8 @@ async def proxy(request: Request, path: str):
 	url = f"{_BACKEND_URL}/{path}"
 	headers = dict(request.headers)
 	headers.pop('host', None)
+	if _FORCE_NON_GZIP:
+		headers['accept-encoding'] = 'identity'
 	body = await request.body()
 
 	params = dict(request.query_params)
@@ -103,42 +116,54 @@ async def proxy(request: Request, path: str):
 				timeout=30.0
 			)
 	except httpx.RequestError as exc:
-		from utils import config as _log_config
-		log_level = _log_config.get('app', 'logging_common_level', str).upper()
-		# Log full details in DEBUG, minimal otherwise
-		if log_level == 'DEBUG':
-			# Reconstruct full URL with query string
-			import urllib.parse
-			full_url = url
-			if params:
-				full_url = f"{url}?{urllib.parse.urlencode(params)}"
-			req_body_str = body.decode(errors='replace') if body else None
-			logmod.log_message(
-				'error',
-				f"[apipxy] Request error: {exc} | {method} {full_url} req_headers={headers} req_body={req_body_str}"
-			)
-		else:
-			logmod.log_message('error', f"[apipxy] Request error: {exc} | {method} {url}")
+		import collections.abc
+		def format_exc_chain(e):
+			chain = []
+			visited = set()
+			def walk(ex):
+				if id(ex) in visited:
+					return
+				visited.add(id(ex))
+				etype = type(ex).__name__
+				msg = str(ex)
+				chain.append(f"[{etype}] {msg}")
+				# ExceptionGroup (Python 3.11+)
+				if hasattr(ex, 'exceptions') and isinstance(getattr(ex, 'exceptions'), collections.abc.Sequence):
+					for sub in ex.exceptions:
+						walk(sub)
+				else:
+					cause = getattr(ex, '__cause__', None)
+					context = getattr(ex, '__context__', None)
+					if cause:
+						walk(cause)
+					elif context:
+						walk(context)
+			walk(e)
+			return ' -> '.join(chain)
+		full_exc = format_exc_chain(exc)
+		# Build the full URL with query params for logging
+		from urllib.parse import urlencode
+		full_url = url
+		if params:
+			full_url += '?' + urlencode(params)
+		logmod.log_message(
+			'error',
+			f"Request error chain: {full_exc} | {method} {full_url} | req_headers={headers} req_body={body[:200] if body else None}"
+		)
 		return Response(content="Backend error", status_code=502)
 
-		if resp.status_code >= 400:
-			logmod.log_message('error', f"[apipxy] Backend error {resp.status_code}: {method} {url}")
+	if resp.status_code >= 400:
+		# Error log: summary only, no payloads
+		from urllib.parse import urlencode
+		full_url = url
+		if params:
+			full_url += '?' + urlencode(params)
+		logmod.log_message('error', f"Backend error {resp.status_code} | {method} {full_url} | req_headers={headers}")
 
-	# Passive JSONL transaction logging: log only the backend payload, not the full HTTP transaction
-	# Only log if enabled and response is JSON or text (not for every request blindly)
-		content_type = resp.headers.get('content-type', '')
-		if _DISCOVER_JSONL_ENABLED and ('json' in content_type or 'text' in content_type):
-			try:
-				payload = resp.json()
-			except Exception:
-				payload = {"raw_body": resp.text}
-			log_jsonl_payload(payload)
-
-		log_transaction(request, resp, body)
-		return Response(content=resp.content, status_code=resp.status_code, headers=dict(resp.headers))
+	log_transaction(request, resp, body)
+	return Response(content=resp.content, status_code=resp.status_code, headers=dict(resp.headers))
 
 if __name__ == "__main__":
-		import sys
-		_HOST = config.get('app', 'host')
-		port = int(_API_PORT) if len(sys.argv) == 1 else int(sys.argv[1])
-		uvicorn.run("api.apipxy:app", host=_HOST, port=port, reload=True)
+	import sys
+	port = _API_PORT if len(sys.argv) == 1 else int(sys.argv[1])
+	uvicorn.run("api.apipxy:app", host="0.0.0.0", port=port, reload=True)
