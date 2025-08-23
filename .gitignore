@@ -1,0 +1,26 @@
+ipython_config.py
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+*.egg
+
+# Logs and database
+log/
+db/
+*.log
+
+# Credentials/config
+config.ini
+
+# VSCode
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db

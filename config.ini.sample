@@ -1,0 +1,17 @@
+[target_backend]
+iptv_url = 
+iptv_username = 
+iptv_password = 
+
+[log]
+# possible options for logging_phase are raw, discovery and elegant
+logging_phase=discovery
+
+[database]
+# database for payload schema discovery and elegant tinydb object logging
+
+[fiddling]
+force_non_gzip = true
+
+[auth]
+override_creds = true
