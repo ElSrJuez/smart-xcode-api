@@ -1,5 +1,37 @@
+import hashlib
+def deduplicate_object(category, data):
+	"""
+	Deduplicate an object in the given category using normalized identifiers.
+	If a duplicate exists, merge fields and return the merged object.
+	If not, return the original data.
+	"""
+	db = _get_db()
+	table = db.table(category)
+	dedup_keys = []
+	if 'id' in data:
+		dedup_keys.append(data['id'])
+	if 'identifiers' in data and isinstance(data['identifiers'], list):
+		dedup_keys.extend(data['identifiers'])
+	norm_keys = set(str(k).strip().lower() for k in dedup_keys if k)
+	if not norm_keys:
+		return data  # No deduplication possible
+	q = Query()
+	cond = None
+	for k in norm_keys:
+		cond = (q.id == k) if cond is None else (cond | (q.id == k))
+		if 'identifiers' in data:
+			cond = cond | (q.identifiers.any([k]))
+	# TinyDB search always returns a list
+	matches = table.search(cond) if cond is not None else []
+	if matches:
+		# Merge with the first match only
+		existing = matches[0]
+		merged = dict(existing)
+		merged.update({k: v for k, v in data.items() if v is not None})
+		return merged
+	return data
 """
----
+git ---
 """
 """
 dbops.py — Canonical Database Operations for smart-xcode-api
@@ -139,26 +171,35 @@ def delete_object(category, identifiers):
 	return len(deleted) if deleted else 0
 
 def touch_object(category, identifiers, data):
-	"""Add if new, or update last_seen if exists. Returns object id or update count."""
+	"""Add if new, or update last_seen if exists. Deduplicates before upsert. Returns object id or update count."""
 	db = _get_db()
 	table = db.table(category)
+	merged_data = deduplicate_object(category, data)
 	q = Query()
 	cond = None
 	for k, v in identifiers.items():
 		cond = (q[k] == v) if cond is None else (cond & (q[k] == v))
 	existing = table.get(cond)
 	if existing:
-		# Update last_seen (and any other updatable fields in data)
-		update_fields = {k: v for k, v in data.items() if k != 'id'}
-		result = table.update(update_fields, cond)
-		logging.log_message('info', f"Touched (updated) object in {category} with {identifiers}: {result}")
-		return result
+		# Update last_seen (and any other updatable fields in merged_data)
+		if isinstance(merged_data, dict):
+			update_fields = {k: v for k, v in merged_data.items() if k != 'id'}
+			result = table.update(update_fields, cond)
+			logging.log_message('info', f"Touched (deduped+updated) object in {category} with {identifiers}: {result}")
+			return result
+		else:
+			logging.log_message('error', f"Merged data is not a dict: {merged_data}")
+			return 0
 	else:
 		# Validate and add new
-		validate_against_schema(category, data)
-		obj_id = table.insert(data)
-		logging.log_message('info', f"Touched (added) new object in {category}: {obj_id}")
-		return obj_id
+		if isinstance(merged_data, dict):
+			validate_against_schema(category, merged_data)
+			obj_id = table.insert(merged_data)
+			logging.log_message('info', f"Touched (deduped+added) new object in {category}: {obj_id}")
+			return obj_id
+		else:
+			logging.log_message('error', f"Merged data is not a dict: {merged_data}")
+			return 0
 
 def prune_stale_objects(category, cutoff_timestamp):
 	"""Remove or mark as inactive any objects not seen since cutoff_timestamp."""
