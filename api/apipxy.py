@@ -16,6 +16,7 @@ from utils import config, logging as logmod
 _BACKEND_URL = config.get('api.apipxy', 'target_url')
 _BACKEND_USERNAME = config.get('api.apipxy', 'target_username')
 _BACKEND_PASSWORD = config.get('api.apipxy', 'target_password')
+_API_HOST = config.get('app', 'host')
 _API_PORT = config.get('api.apipxy', 'api_port', int)
 _LOGGING_API_LOG_FILE = config.get('api.apipxy', 'logging_api_log_file')
 _LOGGING_API_RAW_PATH = config.get('api.apipxy', 'logging_api_raw_path')
@@ -55,7 +56,15 @@ def log_transaction(request: Request, response: httpx.Response, req_body: bytes)
 			logmod.log_message('info', f"{request.method} {url} {response.status_code}")
 		else:
 			# Full summary (still no payloads)
-			logmod.log_message('debug', f"{request.method} {url} {response.status_code} | req_headers={req_headers} resp_headers={resp_headers}")
+			logmod.log_message('debug',
+				"{method} {url} {status_code} | req_headers={req_headers} resp_headers={resp_headers}".format(
+					method=request.method,
+					url=url,
+					status_code=response.status_code,
+					req_headers=json.dumps(req_headers, ensure_ascii=False),
+					resp_headers=json.dumps(resp_headers, ensure_ascii=False)
+				)
+			)
 		# JSONL payload logging if enabled
 		if _LOGGING_API_DISCOVER_JSONL_ENABLED:
 			jsonl_entry = {
@@ -158,12 +167,26 @@ async def proxy(request: Request, path: str):
 		full_url = url
 		if params:
 			full_url += '?' + urlencode(params)
-		logmod.log_message('error', f"Backend error {resp.status_code} | {method} {full_url} | req_headers={headers}")
+		logmod.log_message('error',
+			"Backend error {status_code} | {method} {full_url} | req_headers={headers}".format(
+				status_code=resp.status_code,
+				method=method,
+				full_url=full_url,
+				headers=json.dumps(headers, ensure_ascii=False)
+			)
+		)
 
 	log_transaction(request, resp, body)
 	return Response(content=resp.content, status_code=resp.status_code, headers=dict(resp.headers))
 
 if __name__ == "__main__":
 	import sys
-	port = _API_PORT if len(sys.argv) == 1 else int(sys.argv[1])
-	uvicorn.run("api.apipxy:app", host="0.0.0.0", port=port, reload=True)
+	# No in-code defaults: require api_host and api_port in config.ini
+	host = _API_HOST
+	port = _API_PORT
+	if len(sys.argv) == 2:
+		port = int(sys.argv[1])
+	elif len(sys.argv) == 3:
+		host = sys.argv[1]
+		port = int(sys.argv[2])
+	uvicorn.run("api.apipxy:app", host=host, port=int(port), reload=True)

@@ -43,6 +43,9 @@ def _get_log_file_for_caller():
 	stack = inspect.stack()
 	for frame in stack[1:]:
 		mod = frame.filename.replace('\\', '/').lower()
+		# Skip frames from this logging module
+		if 'utils/logging.py' in mod:
+			continue
 		if 'admin' in mod:
 			return _ADMIN_LOG_PATH
 		if 'api' in mod:
@@ -74,5 +77,18 @@ def log_message(level, msg, *args, **kwargs):
 	Level: 'debug', 'info', 'warning', 'error', 'critical'
 	"""
 	logger = _get_logger()
+	# Try to set the correct module name in the log record
+	extra = kwargs.pop('extra', {})
+	# Find the first frame outside this logging module
+	stack = inspect.stack()
+	module_name = None
+	for frame in stack[1:]:
+		mod = frame.filename.replace('\\', '/').lower()
+		if 'utils/logging.py' not in mod:
+			module_name = frame.frame.f_globals.get('__name__', None)
+			if module_name:
+				break
+	if module_name:
+		extra['caller_module'] = module_name.split('.')[-1]
 	log_func = getattr(logger, level.lower(), logger.info)
-	log_func(msg, *args, **kwargs)
+	log_func(msg, *args, extra=extra, **kwargs)
