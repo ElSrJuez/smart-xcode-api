@@ -1,3 +1,21 @@
+# Logging Strategy
+
+| Purpose                                 | Source/Trigger                              | Log Location/Path (config)                  | Content/Detail Level                                 | Notes                                                      |
+|------------------------------------------|---------------------------------------------|---------------------------------------------|-----------------------------------------------------|------------------------------------------------------------|
+| API Proxy Summary/Error Logging          | `log_transaction` in `apipxy.py`            | `logging_api_log_file` (`log/api_log.txt`)  | Method, URL, status, headers (no bodies/payloads)   | For high-level events, warnings, errors only               |
+| Passive JSONL Transaction Logging        | `log_jsonl_payload` in `apipxy.py`          | `logging_api_discover_jsonl_path` + `discovery.jsonl` | Full backend payload (JSON or raw text), timestamp   | For troubleshooting/manual analysis, not summary log       |
+| Raw API Traffic Logging (if used)        | (Not currently called in code)              | `logging_api_raw_path`                      | (Intended for raw HTTP traffic, not currently active)| Placeholder for future raw traffic logging                 |
+| Admin App Logging                        | Admin modules (not shown in apipxy.py)      | `logging_admin_log_path` (`log/admin`)      | Admin events, errors, warnings                      | Controlled by admin config section                         |
+| Common App Logging                       | Shared/common modules                       | `logging_common_log_file` (`log/common_log.txt`) | General app-level events, warnings, errors           | Used if not admin/api context                              |
+| Database Operation Logging               | DB ops (not shown in apipxy.py)             | `logging_db_log` (`log/db/db_log.txt`)      | DB operation events, errors                         | Controlled by dbops config section                         |
+
+**Key Points:**
+- Each log file has a distinct purpose and level of detail.
+- API summary/error log (`api_log.txt`) should never contain full payloads—only summary info.
+- JSONL log (`discovery.jsonl`) is for full payloads, for troubleshooting/manual analysis, not for summary or error events.
+- All log file paths and enable flags are set in `config.ini` and preloaded into private variables at module init.
+- Uvicorn/server access logs are separate and not controlled by your app’s logging config.
+
 # API Proxy Feature (apipxy)
 
 This document describes the API proxy feature of the smart-xcode-api project, as implemented in the `api/apipxy.py` module. This module is responsible for robustly and transparently proxying requests between clients and backend services, with strict configuration and logging.
@@ -16,14 +34,17 @@ This document describes the API proxy feature of the smart-xcode-api project, as
 - **Separation of Concerns:** The proxy logic is isolated in `api/apipxy.py`, with no cross-module configuration or logging code.
 
 ### Object Discovery Feature
+#### Passive Automatic Object Discovery
 The api service actively but silently discovers new standard iptv objects like streams, categories, epg source associations, etc. up to *but not including* individual programmes.
 The incoming data is assumed to be imperfect/dirty, with undesirable prefixes, duplicity, orphaned, inconsistent syntax among other common flaws
 The incoming data should also be assumed to be potentially, undesirable large / many records
 The schema used for these objects is synthesis/minimal, as the main objective is for potential grouping and summarization avenues - recognizing that specifics is enemy #1 of grouping.
 In the future the discovery feature will also support automatic smart discovery of recurring string/tags that can be used for inclusion/exclusion filters (i.e, substrings for grouping variants of the same channel (1, 2, 3 or "HD", "SD"))
+Minimal tracking with timestamping is another feature, when an object was first discovered - so that automatic age based cleanup can be done of unused/unrequested stale objects.
+
+#### Passive JSONL Transaction logging
 When complete jsonl is enabled, this feature also logs a jsonl object with the payload of each transaction so that the detail can be used for troubleshooting and manual analysis.
 Since the XC API is not well documented and the M3U text objects and the EPG XML objects may also be made available from the endpoint, this log stores records of the payloads (not entire API transactions).
-Minimal tracking with timestamping is another feature, when an object was first discovered - so that automatic age based cleanup can be done of unused/unrequested stale objects.
 
 ## Configuration
 All proxy settings must be defined in the `[api.apipxy]` section of `config.ini`. Example:
