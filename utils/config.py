@@ -17,24 +17,31 @@ TODO:
 - Add optional DEBUG-mode logging of all config.get() requests (log section/key/stacktrace if enabled).
 """
 
+
 import configparser
 import os
 import sys
 
 _CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config.ini')
-_config = configparser.ConfigParser()
+_config = configparser.ConfigParser(interpolation=None)
 _read_files = _config.read(_CONFIG_PATH)
 if not _read_files:
-	sys.exit(f"FATAL: config.ini not found at {_CONFIG_PATH}")
+	print(f"FATAL: config.ini not found at {_CONFIG_PATH}\nPlease ensure the file exists and is readable.")
+	sys.exit(1)
 
 def get(section, key, cast=None):
+	"""
+	TODO: In the future, use canonical logging for all config errors.
+	"""
 	try:
 		value = _config[section][key]
 		if cast:
 			try:
 				return cast(value)
 			except ValueError:
-				sys.exit(f"FATAL: Invalid value for [{section}] {key}: {value}")
+				print(f"FATAL: Invalid value for [{section}] {key}: {value}\nCheck your config.ini for correct types.")
+				sys.exit(1)
 		return value
 	except KeyError:
-		sys.exit(f"FATAL: Missing required config value: [{section}] {key}")
+		print(f"FATAL: Missing required config value: [{section}] {key}\nPlease add this setting to your config.ini under the correct section.")
+		sys.exit(1)

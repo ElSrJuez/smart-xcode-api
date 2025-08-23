@@ -11,15 +11,21 @@ import httpx
 import uvicorn
 from utils import config, logging as logmod
 
-# Preload all config values needed for this module
+
+# Preload all config values needed for this module, matching config.ini
 _BACKEND_URL = config.get('api.apipxy', 'target_url')
-_BACKEND_USERNAME = config.get('api.apipxy', 'backend_username')
-_BACKEND_PASSWORD = config.get('api.apipxy', 'backend_password')
-_ALLOWED_METHODS = [m.strip().upper() for m in config.get('api.apipxy', 'allowed_methods').split(',')]
+_BACKEND_USERNAME = config.get('api.apipxy', 'target_username')
+_BACKEND_PASSWORD = config.get('api.apipxy', 'target_password')
 _API_PORT = config.get('api.apipxy', 'api_port', int)
 _LOGGING_API_LOG_FILE = config.get('api.apipxy', 'logging_api_log_file')
-_FORCE_NON_GZIP = config.get('api.apipxy', 'force_non_gzip', lambda v: v.lower() == 'true')
+_LOGGING_API_RAW_PATH = config.get('api.apipxy', 'logging_api_raw_path')
+_LOGGING_API_DISCOVER_LOGS_PATH = config.get('api.apipxy', 'logging_api_discover_logs_path')
+_FORCE_NON_GZIP = config.get('api.apipxy', 'fiddling_force_non_gzip', lambda v: v.lower() == 'true')
 _OVERRIDE_CREDS = config.get('api.apipxy', 'override_creds', lambda v: v.lower() == 'true')
+_LOGGING_PHASE = config.get('api.apipxy', 'logging_phase')
+
+# Allowed methods must be set in config.ini; fail fast if missing
+_ALLOWED_METHODS = [m.strip().upper() for m in config.get('api.apipxy', 'allowed_methods').split(',')]
 
 app = FastAPI()
 

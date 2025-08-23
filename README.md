@@ -108,3 +108,6 @@ MIT License
 
 Created by github.com/ElSrJuez
 
+---
+**Note:** The project disables configparser interpolation globally in `utils/config.py` to allow logging format strings (e.g., `'%(asctime)s %(levelname)s ...'`) in `config.ini` without errors. This is the standard and recommended approach for Python logging configuration.
+

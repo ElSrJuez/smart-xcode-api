@@ -25,11 +25,12 @@ from logging.handlers import RotatingFileHandler
 
 from utils import config
 
+
 # Preload all config values needed for logging into private variables
 _ADMIN_LOG_PATH = config.get('admin.admin_app', 'logging_admin_log_path')
 _API_LOG_FILE = config.get('api.apipxy', 'logging_api_log_file')
 _COMMON_LOG_FILE = config.get('app', 'logging_common_log_file')
-_ADMIN_LOG_LEVEL = config.get('admin.admin_app', 'logging', str).upper()
+_ADMIN_LOG_LEVEL = config.get('admin.admin_app', 'logging_admin_app_log_level', str).upper()
 _COMMON_LOG_LEVEL = config.get('app', 'logging_common_level', str).upper()
 _LOG_FORMAT = config.get('utils.logging', 'format')
 
