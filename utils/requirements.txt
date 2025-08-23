@@ -1,1 +1,4 @@
+m3u8
+# hashlib and xml.etree.ElementTree are part of the Python standard library and do not need to be added.
+tinydb
 configparser
