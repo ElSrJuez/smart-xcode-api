@@ -1,6 +1,6 @@
 
 # Deduplication logic is now in api/discovery.py for modularity.
-from api.discovery import deduplicate_object
+from utils.discovery import deduplicate_object
 """
 git ---
 """
