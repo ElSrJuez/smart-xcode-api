@@ -83,6 +83,7 @@ Xcode Reverse Proxy is a FastAPI-based middleware designed to simplify IPTV clie
 - **Readability:** Prioritize clear naming and straightforward logic over cleverness.
 - **Testability:** Write code that is easy to test, with minimal side effects and clear input/output boundaries.
 - **Documentation:** Document public interfaces and complex logic to aid future contributors.
+- **Deterministic Config:** We are allergic to in-code defaults, fail- and fall-backs, we strongly believe instead of helping they hide bugs.
 
 ## Directory Structure
 
