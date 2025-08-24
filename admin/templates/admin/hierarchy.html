@@ -1,5 +1,24 @@
-{% extends 'admin/base.html' %}
-{% block body %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Category Hierarchy</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <style>
+    .card { border-radius: 0.5rem; }
+    .card-header { font-size: 1.1rem; }
+    .form-switch { margin-bottom: 0; }
+    .ms-4 { margin-left: 1.5rem !important; }
+    .btn[disabled] { pointer-events: none; opacity: 0.6; }
+    @media (max-width: 768px) {
+      .card-header, .table th, .table td { font-size: 0.95rem; }
+      .ms-4 { margin-left: 0.5rem !important; }
+    }
+  </style>
+</head>
+<body>
 <div class="container mt-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Category Hierarchy</h2>
@@ -9,7 +28,7 @@
       <span class="badge bg-secondary ms-2">Status: <span id="maintenance-status">Unknown</span></span>
     </div>
   </div>
-  {% for cat in hierarchy %}
+  {% macro category_card(cat) %}
     <div class="card mb-4 shadow-sm">
       <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
         <button class="btn btn-sm btn-light me-2" type="button" data-bs-toggle="collapse" data-bs-target="#cat-{{ cat.category_group_id }}" aria-expanded="false" aria-controls="cat-{{ cat.category_group_id }}">
@@ -17,7 +36,7 @@
         </button>
         <span><strong>{{ cat.display_name or cat.category_group_id }}</strong></span>
         <div class="form-check form-switch ms-auto">
-          <input class="form-check-input category-toggle" type="checkbox" id="cat-toggle-{{ cat.category_group_id }}" data-category-id="{{ cat.category_group_id }}" {% if cat.include %}checked{% endif %} aria-checked="{{ 'true' if cat.include else 'false' }}" aria-label="Enable category {{ cat.display_name or cat.category_group_id }}" disabled>
+          <input class="form-check-input category-toggle" type="checkbox" id="cat-toggle-{{ cat.category_group_id }}" data-category-id="{{ cat.category_group_id }}" {% if cat.include %}checked{% endif %} aria-checked="{{ 'true' if cat.include else 'false' }}" aria-label="Enable category {{ cat.display_name or cat.category_group_id }}">
           <label class="form-check-label" for="cat-toggle-{{ cat.category_group_id }}">Enabled</label>
         </div>
       </div>
@@ -27,20 +46,12 @@
         </div>
       </div>
     </div>
+  {% endmacro %}
+
+  {% for cat in hierarchy %}
+    {{ category_card(cat) }}
   {% endfor %}
 </div>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-<style>
-  .card { border-radius: 0.5rem; }
-  .card-header { font-size: 1.1rem; }
-  .form-switch { margin-bottom: 0; }
-  .ms-4 { margin-left: 1.5rem !important; }
-  .btn[disabled] { pointer-events: none; opacity: 0.6; }
-  @media (max-width: 768px) {
-    .card-header, .table th, .table td { font-size: 0.95rem; }
-    .ms-4 { margin-left: 0.5rem !important; }
-  }
-</style>
 <script>
 // Atomic, truthful maintenance mode toggle logic
 const maintenanceToggle = document.getElementById('maintenance-toggle');
@@ -135,26 +146,36 @@ document.addEventListener('DOMContentLoaded', function() {
     element.classList.remove('show');
   });
 
-  // Ensure dynamic content is loaded correctly and chevron toggles with Bootstrap collapse events
+  // Always fetch fresh canonical details on expand (never triggers admin actions)
   document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(twisty => {
     const targetId = twisty.getAttribute('data-bs-target');
     const targetElement = document.querySelector(targetId);
 
-    // Load content on first expand only
     targetElement.addEventListener('show.bs.collapse', function() {
-      if (!targetElement.classList.contains('loaded')) {
-        const categoryId = targetId.replace('#cat-', '');
-        fetch(`/admin/api/category/${categoryId}`)
-          .then(response => response.json())
-          .then(data => {
-            const cardBody = targetElement.querySelector('.card-body');
-            cardBody.innerHTML = data.channels.map(channel => `<div>${channel.name}</div>`).join('');
-            targetElement.classList.add('loaded');
-          })
-          .catch(error => {
-            console.error('Error loading category data:', error);
-          });
-      }
+      const categoryId = targetId.replace('#cat-', '');
+      fetch(`/admin/api/category/${categoryId}`)
+        .then(response => response.json())
+        .then(data => {
+          const cardBody = targetElement.querySelector('.card-body');
+          // Show canonical details: last_seen, stats, and channel list
+          let html = '';
+          html += `<div class='mb-2'><strong>Last Seen:</strong> ${data.last_seen || 'N/A'}</div>`;
+          html += `<div class='mb-2'><strong>First Seen:</strong> ${data.first_seen || 'N/A'}</div>`;
+          html += `<div class='mb-2'><strong>Channels:</strong> ${data.stats ? data.stats.num_channels : 0}, <strong>Streams:</strong> ${data.stats ? data.stats.num_streams : 0}</div>`;
+          if (data.channels && data.channels.length) {
+            html += '<div class="mt-2"><strong>Channels:</strong><ul class="mb-0">';
+            for (const ch of data.channels) {
+              html += `<li>${ch.name || ch.channel_id}</li>`;
+            }
+            html += '</ul></div>';
+          } else {
+            html += '<div class="text-muted">No channels in this category.</div>';
+          }
+          cardBody.innerHTML = html;
+        })
+        .catch(error => {
+          console.error('Error loading category data:', error);
+        });
     });
 
     // Chevron icon toggle on collapse/expand
@@ -169,4 +190,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 </script>
-{% endblock %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<!-- End of standalone template -->
+</body>
+</html>
