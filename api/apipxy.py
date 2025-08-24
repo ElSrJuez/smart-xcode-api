@@ -31,7 +31,18 @@ _LOGGING_PHASE = config.get('api.apipxy', 'logging_phase')
 # Allowed methods must be set in config.ini; fail fast if missing
 _ALLOWED_METHODS = [m.strip().upper() for m in config.get('api.apipxy', 'allowed_methods').split(',')]
 
+# Maintenance lock file path (semaphore for maintenance mode)
+_MAINTENANCE_LOCK_PATH = config.get('app', 'maintenance_flag_filename')
 app = FastAPI()
+
+
+
+def is_maintenance_mode():
+    """
+    Returns True if the maintenance lock file exists, else False.
+    Uses the preloaded _MAINTENANCE_LOCK_PATH.
+    """
+    return os.path.exists(_MAINTENANCE_LOCK_PATH)
 
 def log_transaction(request: Request, response: httpx.Response, req_body: bytes):
 	try:

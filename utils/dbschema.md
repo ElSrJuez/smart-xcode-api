@@ -1,3 +1,26 @@
+# Canonical Database & Schema: 2025-08-24 Update
+
+## Latest Improvements (2025-08-24)
+
+- **Singleton, Idempotent Initialization:** All DB and schema initialization is performed once, at import, via a guarded `init_module()` in `utils/dbops.py`. No repeated or phantom initializations, even under dev servers.
+- **Strict Schema-Driven Canonical Construction:** All canonical objects (e.g., `category_group`) are constructed strictly according to the schema. No in-code defaults or fallbacks. Any missing required field results in a hard failure, always logged, never silently defaulted or raised.
+- **Logging:** All errors, warnings, and info are logged (never raised), with enhanced import context (importing module, process ID, etc). Logging is deterministic and configured via `config.ini`.
+- **Deduplication & Upsert:** All upserts and deduplication use the canonical schema-driven ID (e.g., `category_group_id`). TinyDB’s internal doc_id (sequential number) is never used in business logic and is only present in the JSON for storage.
+- **No TinyDB doc_id in Logic:** The sequential number in the DB is never referenced, exposed, or managed by any code. All lookups, deduplication, and relationships use your canonical IDs.
+- **Single-Process Server:** Uvicorn is run without `reload=True`, ensuring only one process initializes the DB and schema.
+- **Imports:** All imports are at the top of each file, never inside functions.
+- **Immediate Disk Writes:** All DB writes are immediate and reliable.
+- **Log-Based Error Handling:** All errors are logged, not raised, for robust diagnostics and transparency.
+
+## TODO (as of 2025-08-24)
+
+- [ ] **Schema Evolution:** Add robust schema migration/versioning logic for future schema changes.
+- [ ] **Admin Moderation:** Expand admin UI and API for toggling `include`/`exclude` and editing canonical objects.
+- [ ] **Diagnostics:** Add statistics and summaries for orphaned/discarded objects (see orphan handling section).
+- [ ] **Testing:** Add automated tests for all ingestion, deduplication, and error logging paths.
+- [ ] **Performance:** Monitor and optimize DB write performance for large-scale ingestion.
+- [ ] **Documentation:** Keep this file and the README in sync with all future changes.
+
 # parse_xc: Canonical Parsing and Dispatch Responsibilities
 
 ## Responsibilities of parse_xc
