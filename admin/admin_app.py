@@ -1,7 +1,8 @@
 
 from flask import Flask
 
-from admin_utils import admin_config
+
+from admin.admin_utils import admin_config
 from flask import Flask
 import os
 
@@ -9,7 +10,7 @@ import os
 app = Flask(__name__)
 
 # Register blueprints
-from routes.admin_home import admin_home_bp
+from admin.routes.admin_home import admin_home_bp
 app.register_blueprint(admin_home_bp)
 
 

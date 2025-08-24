@@ -7,7 +7,7 @@ Sample blueprint for the admin app.
 """
 
 from flask import Blueprint
-from admin_utils import admin_logging
+from admin.admin_utils import admin_logging
 
 admin_home_bp = Blueprint('admin_home', __name__)
 

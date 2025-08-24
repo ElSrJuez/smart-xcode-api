@@ -8,7 +8,7 @@ Minimal TinyDB operations for the admin app.
 """
 
 from tinydb import TinyDB
-from admin_utils import admin_config
+from admin.admin_utils import admin_config
 import os
 
 _DB_PATH = admin_config.get('db', 'discovery_db_path', str)

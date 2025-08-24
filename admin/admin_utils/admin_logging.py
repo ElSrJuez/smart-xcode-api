@@ -10,7 +10,7 @@ Minimal logging utility for the admin app.
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-from admin_utils import admin_config
+from admin.admin_utils import admin_config
 
 _LOG_PATH = admin_config.get('admin.admin_app', 'logging_admin_log_path')
 _LOG_LEVEL = admin_config.get('admin.admin_app', 'logging_admin_app_log_level', str).upper()
