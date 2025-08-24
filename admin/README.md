@@ -1,3 +1,13 @@
+## Coding Principles: No In-Code Defaults or Fallbacks
+
+**This project is strictly allergic to in-code defaults, fail- and fall-backs.**
+
+- All configuration must be loaded from config.ini or other explicit config files.
+- If a required config value is missing or invalid, the app must fail fast and exit with a clear error.
+- No hardcoded values, silent fallbacks, or implicit defaults are permitted anywhere in the codebase.
+- This principle ensures deterministic, predictable, and maintainable behavior across all environments.
+
+> This is a core project value—see utils/config.py and admin_utils/admin_config.py for canonical enforcement patterns.
 # Guidance for Future Admin App Maintainers (2025-08-24)
 
 ## Admin Web Interface Vision (2025-08-24)
