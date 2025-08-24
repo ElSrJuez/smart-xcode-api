@@ -35,6 +35,63 @@
 
 ---
 
+### 1. **Agreed-Upon Tech Stack (Python-Only, Simple, Beautiful)**
+
+- **Backend & UI:** Flask (already used) with [Flask-Admin](https://flask-admin.readthedocs.io/) for instant, modern, interactive admin UI.
+- **UI Components:** Use Flask-Admin’s built-in Bootstrap themes for a clean, responsive look.
+- **Interactivity:** Use Flask-Admin AJAX features and minimal vanilla JS only if needed.
+- **Hierarchy:** Hierarchical/tree views via Flask-Admin plugins or custom templates (all Python-side).
+- **Statistics & Smart Tags:** Rendered directly in Flask templates or Flask-Admin views.
+- **Semaphore:** Exposed as a simple toggle in the admin UI, which creates/deletes the lock file.
+- **No npm, no React, no build tools, no state management libraries.**
+- **All logic, UI, and state are handled in Python/Flask.**
+
+### 2. **Wireframe (Textual, Flask-Admin/Bootstrap Style)**
+
+```
++---------------------------------------------------------------+
+| [ Maintenance: ON/OFF Toggle ]   [ Stats: X categories, ... ] |
++---------------------------------------------------------------+
+| Hierarchy:                                                    |
+|   [Category 1] (enabled)                                      |
+|     └─ [Channel A] (enabled)                                  |
+|         └─ [Stream 1] (disabled)                              |
+|         └─ [Stream 2] (enabled)                               |
+|     └─ [Channel B] (disabled)                                 |
+|   [Category 2] (enabled)                                      |
+|     └─ ...                                                    |
++---------------------------------------------------------------+
+| [Smart Tags]  [Add Tag] [Edit] [Delete]                      |
+|   - Tag: 'VIP' (include)   - Tag: 'XXX' (exclude)            |
++---------------------------------------------------------------+
+```
+- **Enable/Disable**: Each object (category, channel, stream) has a toggle switch (Flask-Admin action or inline button).
+- **Stats**: Displayed at the top (counts per category/channel/stream).
+- **Maintenance Toggle**: Prominently at the top, toggles the lock file.
+- **Smart Tag Management**: At the bottom or in a Flask-Admin view.
+
+### 3. **Implementation Plan (Python-Only, No Extra APIs)**
+
+**Phase 1: Maintenance/Semaphore**
+- [ ] Add Flask route or Flask-Admin action to get/set maintenance mode (toggle lock file directly from UI).
+- [ ] Add toggle button in Flask-Admin UI for maintenance mode.
+
+**Phase 2: Hierarchical Object View**
+- [ ] Use Flask-Admin model or custom view to render all objects in a hierarchical, collapsible tree (categories > channels > streams).
+- [ ] Add enable/disable (include/exclude) toggle for each object, using Flask-Admin actions or inline buttons.
+
+**Phase 3: Statistics**
+- [ ] Compute stats in Python and render in a summary bar at the top of the Flask-Admin UI.
+
+**Phase 4: Smart Tag Management**
+- [ ] Use Flask-Admin model view for smart tags, with add/edit/delete actions.
+
+**Phase 5: Polish**
+- [ ] Responsive design (Bootstrap), error handling, confirmation dialogs for destructive actions.
+- [ ] Schema-driven rendering: adapt UI fields to schema changes in Python.
+
+---
+
 ## Key Advice & Best Practices
 
 - **Separation of Concerns:** Keep admin logic (moderation, UI, manual edits) strictly separate from passive discovery and ingestion. Never let admin actions mutate canonical ingestion logic or schema.
