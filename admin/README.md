@@ -162,4 +162,29 @@ These actions are performed via the admin interface and are not part of the API'
 - This approach ensures a clear separation of concerns: the admin app remains simple and focused, while all security and access control are managed by infrastructure.
 
 *This design is intentional and aligns with the project's priorities: rapid delivery of basic features, minimal in-app complexity, and reliance on external security best practices.*
-# The Admin endpoint should run as a separate listener to make it easy to control security, especially if the api will be exposed to the internet.
+
+## Admin App Directory Structure
+
+```
+admin/
+├── admin_app.py         # Main Flask/Flask-Admin app entrypoint
+├── README.md            # Admin app documentation
+├── requirements.txt     # Admin-specific Python dependencies
+├── .gitkeep             # Ensures folder is tracked in git
+├── admin_utils/         # Utilities for admin app (DB ops, logging, etc.)
+│   ├── admin_dbops.py
+│   └── admin_logging.py
+├── routes/              # (Future) Flask blueprints/routes for modularity
+│   └── .gitkeep
+├── static/              # Static assets (CSS, JS, images) for custom UI
+├── templates/           # Jinja2/Flask-Admin templates (custom UI, overrides)
+│   └── .gitkeep
+```
+
+- `admin_utils/` is for admin-specific helpers (DB ops, logging, etc.).
+- `routes/` is for modular Flask blueprints (can be expanded as the app grows).
+- `templates/` is for custom Jinja2 or Flask-Admin templates.
+- `static/` is for static assets (CSS, JS, images) for UI customization.
+- `.gitkeep` files ensure empty folders are tracked in git.
+
+**This structure is clean and ready for Flask-Admin and future expansion.**
