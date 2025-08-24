@@ -1,5 +1,40 @@
 # Guidance for Future Admin App Maintainers (2025-08-24)
 
+## Admin Web Interface Vision (2025-08-24)
+
+- **UI/UX Goals:**
+	- The admin web interface should be simple, modern, and visually appealing, prioritizing clarity and ease of use.
+	- Use a clean, responsive layout with intuitive controls and clear visual hierarchy.
+
+- **Core Features:**
+	1. **Maintenance/Semaphore Control:**
+		 - Provide a clear toggle/button to enable or disable maintenance mode (semaphore), which will pause all proxy transactions when active.
+		 - Display current maintenance status prominently at the top of the interface.
+	2. **Hierarchical Object View:**
+		 - Render all discovered objects (categories, channels, streams) in a hierarchical, collapsible tree or list.
+		 - Each object should have an intuitive enable/disable (include/exclude) button or switch, reflecting and controlling its moderation status.
+		 - The UI should be schema-driven and adapt to changes in the discovery schema.
+	3. **Basic Statistics:**
+		 - Display summary statistics such as:
+			 - Number of channels and streams per category
+			 - Number of streams per channel
+			 - Total counts and breakdowns for quick diagnostics
+	4. **Smart Tag Management:**
+		 - Provide a simple interface to view, add, edit, or remove smart tags for inclusion/exclusion filtering.
+		 - Tags should be clearly associated with their usage contexts (e.g., channel, stream, group).
+
+- **Secondary Features:**
+	- Manual pruning/removal of objects
+	- Diagnostics for orphaned/discarded objects
+	- Display of recent admin actions (if audit is ever implemented)
+
+- **Design Principles:**
+	- Prioritize safety: all destructive or bulk actions should require confirmation.
+	- Make moderation status and object relationships visually clear.
+	- Keep the interface schema-driven and adaptive to future changes.
+
+---
+
 ## Key Advice & Best Practices
 
 - **Separation of Concerns:** Keep admin logic (moderation, UI, manual edits) strictly separate from passive discovery and ingestion. Never let admin actions mutate canonical ingestion logic or schema.
