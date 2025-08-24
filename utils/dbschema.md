@@ -211,11 +211,11 @@ This architecture supports flexible, evolvable, and transparent object discovery
 
 | Object Type   | General Fields                                                                 |
 |-------------- |-------------------------------------------------------------------------------|
-| Channel       | id, name(s), logo, group/category, tvg_id, attributes, first_seen, last_seen  |
-| Streams (per channel) | url, status/quality (last viewed, last status, error count, etc.) |
-| Category      | id, name, parent_id, attributes, first_seen, last_seen                        |
-| Programme     | id, channel_id, title, desc, start, stop, lang, attributes, first_seen, last_seen |
-| Account/Info  | user_info, server_info, attributes, first_seen, last_seen                     |
+| Category Group| category_group_id, display_name, identifiers, include, first_seen, last_seen  |
+| Channel       | channel_id, display_name, category_group_id, identifiers, group, include, first_seen, last_seen |
+| Stream        | stream_id, display_name, channel_id, url, status (last_status, last_viewed, error_count), first_seen, last_seen |
+| Include/Exclude Tag | tag, type, usage_contexts, include, first_seen, last_seen |
+| Smart Grouping Substring | substring, usage_contexts, include, first_seen, last_seen |
 
 # Notes:
 # - Fields are generalized for grouping, summarization, and tracking, not strict validation.

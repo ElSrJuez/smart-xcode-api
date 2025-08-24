@@ -1,4 +1,6 @@
 
+
+
 from flask import Flask, redirect, url_for
 
 
@@ -12,9 +14,16 @@ from admin.admin_utils import admin_dbops
 
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 'templates'))
 
+
 # Register blueprints
 from admin.routes.admin_home import admin_home_bp
 app.register_blueprint(admin_home_bp)
+
+from admin.routes.maintenance import maintenance_bp
+app.register_blueprint(maintenance_bp)
+
+from admin.routes.category import category_bp
+app.register_blueprint(category_bp)
 
 # Flask-Admin setup
 admin = Admin(app, name="SmartX Admin", template_mode="bootstrap4")
@@ -24,7 +33,8 @@ class HierarchyView(BaseView):
     @expose('/')
     def index(self):
         hierarchy = admin_dbops.get_full_hierarchy()
-        return self.render('admin/hierarchy.html', hierarchy=hierarchy)
+        get_category_fields = admin_dbops.get_category_fields
+        return self.render('admin/hierarchy.html', hierarchy=hierarchy, get_category_fields=get_category_fields)
 
 admin.add_view(HierarchyView(name="Hierarchy", endpoint="hierarchy"))
 
