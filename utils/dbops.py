@@ -1,5 +1,3 @@
-
-
 import os
 import json
 import hashlib
@@ -52,6 +50,7 @@ def _load_schema():
 		_schema = json.load(f)
 
 
+
 # Initialize DB and schema at import time
 try:
 	_self_init()
@@ -63,6 +62,29 @@ try:
 except Exception as e:
 	_INIT_OK = False
 	logging.log_message('error', f'dbops.py: Initialization failed: {e}')
+
+# ============================
+# Canonical Schema Accessors
+# ============================
+def get_schema_field(category, fieldname):
+	"""
+	Return the value of a top-level field (e.g., canbeidentifier) for a given object category from the loaded schema.
+	Args:
+		category (str): The object category name (e.g., 'category_group').
+		fieldname (str): The field to retrieve (e.g., 'canbeidentifier').
+	Returns:
+		The value of the field, or raises ValueError if not found.
+	"""
+	global _schema
+	if _schema is None:
+		raise RuntimeError("Schema not loaded.")
+	for obj in _schema.get('object_categories', []):
+		if obj.get('name') == category:
+			if fieldname in obj:
+				return obj[fieldname]
+			else:
+				raise ValueError(f"Field '{fieldname}' not found in schema for category '{category}'")
+	raise ValueError(f"Category '{category}' not found in schema.")
 
 def get_category_for_action(action):
 	"""
@@ -86,6 +108,36 @@ dbops.py — Canonical Database Operations for smart-xcode-api
 All database operations for passive discovery and admin moderation features.
 Design: Self-initializing, config-driven, schema-validated, canonical logging, modular, minimal side effects.
 """
+# ============================
+# Canonical ID Field Accessor
+# ============================
+def get_canonical_id_field(category):
+	"""
+	Return the canonical id field name for a given object category, based on the schema.
+	Args:
+		category (str): The object category name (e.g., 'category_group').
+	Returns:
+		str: The canonical id field name (e.g., 'category_group_id').
+	Raises:
+		ValueError: If no canonical id field is found in the schema for the category.
+	"""
+	global _schema
+	if _schema is None:
+		raise RuntimeError("Schema not loaded.")
+	for obj in _schema.get('object_categories', []):
+		if obj.get('name') == category:
+			# Look for a field ending with '_id' and marked as canonical
+			for field in obj.get('fields', []):
+				if field['name'].endswith('_id') and field.get('canonical', False):
+					return field['name']
+			# Fallback: first field ending with '_id'
+			for field in obj.get('fields', []):
+				if field['name'].endswith('_id'):
+					return field['name']
+			raise ValueError(f"No canonical id field found in schema for category '{category}'")
+	raise ValueError(f"Category '{category}' not found in schema.")
+
+
 
 def deduplicate_object(category, data):
 	"""

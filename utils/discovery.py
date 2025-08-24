@@ -1,6 +1,63 @@
+"""
+discovery.py — Canonical Discovery and Parsing Logic
+
+This module provides canonical parsing, normalization, and ingestion for category_group and related objects.
+All imports are at the top, following project conventions.
+"""
+
 from utils import logging as logmod
 import m3u8
-from utils.dbops import touch_object, validate_against_schema
+import re
+import utils.dbops as dbops
+
+# Canonical construction of a category_group object from raw input
+def create_category_group_object(raw_obj):
+  """
+  Synthesize a canonical, schema-compliant category_group object from raw input.
+  Args:
+    raw_obj (dict): The raw category/group object from XC API or M3U source.
+  Returns:
+    dict: A fully-formed, schema-compliant category_group object.
+  Raises:
+    ValueError: If required incoming fields are missing.
+  """
+  if 'category_name' not in raw_obj:
+    raise ValueError("Missing required field 'category_name' in raw_obj")
+
+  display_name = raw_obj['category_name']
+  category_group_id = canonical_category_group_id(display_name)
+  # Canonically build identifiers using schema
+  identifiers = create_identifiers_object(raw_obj, 'category_group')
+
+  canonical = {
+    "category_group_id": category_group_id,
+    "display_name": display_name,
+    "identifiers": identifiers,
+    # Pass through parent_id if present (for diagnostics, not canonical)
+    **({"parent_id": raw_obj["parent_id"]} if "parent_id" in raw_obj else {})
+  }
+  return canonical
+
+#
+# Canonical construction of an identifiers list from raw input
+def create_identifiers_object(raw_obj, object_categories_object_name):
+  """
+  Canonically construct the identifiers list for an object, using the canbeidentifier fields from the schema.
+  Args:
+    raw_obj (dict): The raw input object from source data.
+    object_categories_object_name (str): The object category name (e.g., 'category_group').
+  Returns:
+    list: List of identifier dicts, each with 'field' and 'value'.
+  """
+
+  canbeidentifier_fields = dbops.get_schema_field(object_categories_object_name, 'canbeidentifier')
+  if not canbeidentifier_fields:
+    logmod.log_message('warning', f"No identifier fields found in schema for object category '{object_categories_object_name}'")
+  identifiers = []
+  for field in canbeidentifier_fields:
+    if field in raw_obj and raw_obj[field] is not None:
+      identifiers.append({"field": field, "value": str(raw_obj[field])})
+  return identifiers
 
 def parse_m3u(m3u_content):
   """
@@ -45,52 +102,11 @@ def parse_xc(xc_json, category=None):
       if not isinstance(xc_json, list):
         raise TypeError(f"Expected list for category_group, got {type(xc_json).__name__}")
       for cat in xc_json:
-        obj = {
-          "display_name": cat.get('category_name'),
-          "parent_id": cat.get('parent_id'),
-          "first_seen": None,
-          "last_seen": None
-        }
-        logmod.log_message('debug', f"Discovered XC category: display_name={obj['display_name']}")
-        yield obj
-    elif category == 'channel':
-      if not isinstance(xc_json, dict):
-        raise TypeError(f"Expected dict for channel, got {type(xc_json).__name__}")
-      chans = xc_json.get('channels', [])
-      for ch in chans:
-        obj = {
-          "id": ch.get('stream_id'),
-          "name": ch.get('name'),
-          "logo": ch.get('stream_icon'),
-          "group": ch.get('category_id'),
-          "tvg_id": ch.get('epg_channel_id'),
-          "attributes": {},
-          "first_seen": None,
-          "last_seen": None
-        }
-        logmod.log_message('debug', f"Discovered XC channel: {obj['name']} (id={obj['id']})")
-        yield obj
-    elif category == 'stream':
-      if not isinstance(xc_json, dict):
-        raise TypeError(f"Expected dict for stream, got {type(xc_json).__name__}")
-      streams = xc_json.get('streams', [])
-      for st in streams:
-        obj = {
-          "id": st.get('stream_id'),
-          "name": st.get('name'),
-          "url": st.get('url'),
-          "group": st.get('category_id'),
-          "logo": st.get('stream_icon'),
-          "tvg_id": st.get('epg_channel_id'),
-          "attributes": {},
-          "first_seen": None,
-          "last_seen": None
-        }
-        logmod.log_message('debug', f"Discovered XC stream: {obj['name']} (id={obj['id']}) -> {obj['url']}")
-        yield obj
+        yield create_category_group_object(cat)
+      logmod.log_message('info', f"parse_xc completed for category={category}")
+    # Add similar logic for 'channel' and 'stream' as new canonical functions are implemented
     else:
       raise ValueError(f"Unknown or unsupported category for parse_xc: {category}")
-    logmod.log_message('info', f"parse_xc completed for category={category}")
   except Exception as e:
     logmod.log_message('error', f"parse_xc failed for category={category}: {e}")
 
@@ -137,37 +153,31 @@ def ingest_object(category, obj):
   """
   try:
     logmod.log_message('debug', f"CALLCHAIN: ENTER ingest_object category={category} obj={repr(obj)}")
-    ident = obj.get('id') if 'id' in obj else obj.get('name')
-    logmod.log_message('debug', f"ingest_object called for category={category}, ident={ident}")
-    norm_obj = normalize_identifiers(obj)
-    logmod.log_message('debug', f"CALLCHAIN: BEFORE validate_against_schema category={category} norm_obj={repr(norm_obj)}")
-    validate_against_schema(category, norm_obj)
-    logmod.log_message('debug', f"CALLCHAIN: AFTER validate_against_schema category={category} norm_obj={repr(norm_obj)}")
-    id_key = 'id' if 'id' in norm_obj else 'name'
-    result = touch_object(category, {id_key: norm_obj[id_key]}, norm_obj)
+    dbops.validate_against_schema(category, obj)
+    id_key = dbops.get_canonical_id_field(category)
+    result = dbops.touch_object(category, {id_key: obj[id_key]}, obj)
     logmod.log_message('debug', f"CALLCHAIN: EXIT ingest_object category={category} obj={repr(obj)} result={result}")
-    logmod.log_message('info', f"Ingested object in {category}: {norm_obj.get(id_key, None)} result={result}")
+    logmod.log_message('info', f"Ingested object in {category}: {obj.get(id_key, None)} result={result}")
     return result
   except Exception as e:
     logmod.log_message('error', f"ingest_object failed for {category} obj={obj}: {e}")
-def deduplicate_object(category, data):
-  from utils import dbops
-  return dbops.deduplicate_object(category, data)
+    raise
+
+# this seemingly does nothing, please flag for deletion
 
 def canonical_category_group_id(category_name: str) -> str:
-    """
-    Generate a canonical, normalized identifier for a category group.
-    Args:
-        category_name (str): The raw category name (e.g., 'VIP | FORMULA 1').
-    Returns:
-        str: Canonical, normalized id (e.g., 'vip_formula_1').
-    """
-    if not category_name or not isinstance(category_name, str):
-        raise ValueError("category_name must be a non-empty string")
-    # Lowercase, strip, replace non-alphanum with underscores, collapse multiple underscores
-    import re
-    norm = category_name.strip().lower()
-    norm = re.sub(r'[^a-z0-9]+', '_', norm)
-    norm = re.sub(r'_+', '_', norm)
-    return norm.strip('_')
+  """
+  Generate a canonical, normalized identifier for a category group.
+  Args:
+    category_name (str): The raw category name (e.g., 'VIP | FORMULA 1').
+  Returns:
+    str: Canonical, normalized id (e.g., 'vip_formula_1').
+  """
+  if not category_name or not isinstance(category_name, str):
+    raise ValueError("category_name must be a non-empty string")
+  # Lowercase, strip, replace non-alphanum with underscores, collapse multiple underscores
+  norm = category_name.strip().lower()
+  norm = re.sub(r'[^a-z0-9]+', '_', norm)
+  norm = re.sub(r'_+', '_', norm)
+  return norm.strip('_')
 

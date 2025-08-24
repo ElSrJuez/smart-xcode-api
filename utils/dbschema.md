@@ -1,3 +1,44 @@
+# parse_xc: Canonical Parsing and Dispatch Responsibilities
+
+## Responsibilities of parse_xc
+
+- Parse the incoming XC API JSON.
+- For each object, determine its category (e.g., category_group, channel, stream) based on the action or context.
+- Collect only the relevant, interesting raw fields for that object type (e.g., for category_group, just category_name, parent_id, etc.).
+- Validate that each raw object contains the required incoming fields for that object type (e.g., category_name for category_group).
+- Pass the raw object to the canonical pipeline function (e.g., create_category_group_object(raw_obj)).
+
+## What parse_xc should NOT do
+
+- It should NOT synthesize or normalize fields.
+- It should NOT consult or enforce the schema.
+- It should NOT add defaults or computed fields.
+
+## Schema validation and synthesis
+
+- These are handled later, inside the canonical pipeline function (e.g., create_category_group_object), which is the only place that knows about the schema and how to synthesize a fully compliant object.
+
+## Summary of best practice
+
+- Use the action/category hint to select the parsing logic.
+- For each raw object, validate that it contains the required incoming fields for that object type before passing it to the canonical pipeline function.
+- Do not rely solely on the action hint—always check the actual data for the expected fields.
+- This ensures robust, source-agnostic parsing and prevents misclassification or silent data loss.
+# Canonical Construction of category_group Objects
+
+## Canonical Construction Function: create_category_group_object
+
+- All category_group objects must be synthesized via the function `create_category_group_object(raw_obj)`.
+- This function is the only entry point for constructing a canonical, schema-compliant category_group from raw input (XC, M3U, etc).
+- The first step in this function is to validate that the raw input contains the fundamental incoming fields required for a category_group (e.g., `category_name` for XC sources, or equivalent for M3U).
+- If any required incoming field is missing, the function must raise an error or return a clear failure, and must not attempt to synthesize or guess missing source data.
+- Only after validation, the function will synthesize all canonical fields (e.g., `category_group_id`, `display_name`, `identifiers`, etc.) as defined in the schema, using the raw input and deterministic logic.
+- No other part of the codebase is permitted to independently invent, synthesize, or normalize category_group fields.
+
+**Benefits:**
+- Ensures DRYness, atomicity, and schema compliance.
+- Guarantees all category_group objects are constructed in a uniform, auditable way.
+- Centralizes logic for easier maintenance, debugging, and schema evolution.
 # Implementation Table & Order
 
 # Parent/Child Relationships & Flattening
