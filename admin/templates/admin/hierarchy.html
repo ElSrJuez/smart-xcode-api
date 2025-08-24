@@ -1,0 +1,25 @@
+{% extends 'admin/master.html' %}
+{% block body %}
+<div class="container mt-4">
+  <h2>Category Hierarchy</h2>
+  {% for cat in hierarchy %}
+    <div class="card mb-3">
+      <div class="card-header">
+        <strong>{{ cat.display_name or cat.category_group_id }}</strong> (Enabled: {{ cat.include }})
+      </div>
+      <div class="card-body">
+        {% for ch in cat.channels %}
+          <div class="ml-4">
+            <strong>{{ ch.display_name or ch.channel_id }}</strong> (Enabled: {{ ch.include }})
+            <ul>
+              {% for st in ch.streams %}
+                <li>{{ st.display_name or st.stream_id }} (URL: {{ st.url }})</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

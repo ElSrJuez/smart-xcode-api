@@ -19,6 +19,15 @@ app.register_blueprint(admin_home_bp)
 # Flask-Admin setup
 admin = Admin(app, name="SmartX Admin", template_mode="bootstrap4")
 
+# Hierarchy View
+class HierarchyView(BaseView):
+    @expose('/')
+    def index(self):
+        hierarchy = admin_dbops.get_full_hierarchy()
+        return self.render('admin/hierarchy.html', hierarchy=hierarchy)
+
+admin.add_view(HierarchyView(name="Hierarchy", endpoint="hierarchy"))
+
 # Example custom view (replace with TinyDB model view as needed)
 class HelloView(BaseView):
     @expose('/')

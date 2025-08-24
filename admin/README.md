@@ -1,3 +1,87 @@
+## Data Model & Schema-Driven UI
+
+All admin objects are stored in TinyDB, with a schema defined in `db/schema/discovery_schema.json` and referenced in `config.ini`. The admin UI is strictly schema-driven—any changes to the schema are reflected in the UI.
+
+**Canonical TinyDB Document Structure:**
+
+- **Category**
+	- `id` (str): Unique identifier
+	- `name` (str)
+	- `enabled` (bool)
+	- `channels` (list of Channel objects)
+- **Channel**
+	- `id` (str)
+	- `name` (str)
+	- `enabled` (bool)
+	- `streams` (list of Stream objects)
+- **Stream**
+	- `id` (str)
+	- `name` (str)
+	- `enabled` (bool)
+	- `tags` (list of Tag IDs)
+- **Tag**
+	- `id` (str)
+	- `name` (str)
+	- `type` (str): 'include' or 'exclude'
+	- `context` (str): e.g., 'channel', 'stream', 'category'
+
+All objects must conform to this schema. The admin UI must never assume or hardcode field names/types—always use the schema.
+
+---
+
+## Hierarchical View Implementation
+
+The admin UI renders a nested, collapsible hierarchy:
+
+- Categories > Channels > Streams
+- Each object displays its `enabled` status as a toggle (Flask-Admin action or inline button).
+- The hierarchy is rendered using Flask-Admin custom views or Jinja2 templates, driven by the schema.
+- Any changes to the schema or data structure are automatically reflected in the UI.
+
+---
+
+## Maintenance Toggle (Semaphore)
+
+- The maintenance toggle is a prominent UI element (button/switch) at the top of the admin interface.
+- Toggling ON creates the lock file defined in `config.ini` (`maintenance_flag_filename`); toggling OFF deletes it.
+- The current status is polled and displayed in real time.
+- All errors (e.g., file permission issues) are shown to the user and logged.
+- No in-code fallback: if the lock file cannot be created/deleted, the UI must fail fast and show a clear error.
+
+---
+
+## Statistics Calculation & Display
+
+- Statistics (counts per category, channel, stream, etc.) are computed by querying TinyDB at runtime.
+- Stats are displayed at the top of the admin UI, using a Flask-Admin dashboard widget or custom view.
+- All stats logic is schema-driven—no hardcoded field names or assumptions.
+
+---
+
+## Smart Tag CRUD
+
+- Tags are stored as a separate collection/table in TinyDB.
+- The admin UI provides a Flask-Admin model view for full CRUD (create, read, update, delete) of tags.
+- Tags are associated with their context (category, channel, stream) and type (include/exclude).
+- All tag operations are schema-driven and validated.
+
+---
+
+## Error Handling & User Feedback
+
+- All errors (missing config, DB issues, etc.) are logged and shown to the user in the UI.
+- The app must fail fast on any critical error—never fallback or continue with partial config/data.
+- User-facing error messages are clear, actionable, and never expose sensitive details.
+
+---
+
+## Testing & Extensibility
+
+- All admin logic should be covered by unit and integration tests (see `tests/` folder for future expansion).
+- New features must follow the same schema-driven, config-only, fail-fast principles.
+- To add a new view or model, define its schema, update the config, and implement a Flask-Admin view or custom template.
+
+---
 ## Coding Principles: No In-Code Defaults or Fallbacks
 
 **This project is strictly allergic to in-code defaults, fail- and fall-backs.**
