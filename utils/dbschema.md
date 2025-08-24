@@ -1,5 +1,23 @@
 # Implementation Table & Order
 
+# Parent/Child Relationships & Flattening
+
+# Orphan Handling
+
+- **Programmes**: Programme entries that cannot be associated with any stream, channel, or category_group should be discarded to save memory and storage. (Future TODO: Track statistics and summaries about discarded orphans for diagnostics.)
+- **Streams and Channels**: Streams or channels that cannot be associated with a category_group should be minimally recorded (the just the corresponding id, name and url fields only when available plus an `orphaned` flag). Objective: for reporting/tracking purposes.
+- **Priority**: The top priority for orphan handling is to avoid disruption from cleaner, well-associated incoming data. Orphaned data should never pollute or interfere with the canonical, well-structured records.
+
+This approach ensures the database remains clean, efficient, and focused on actionable, well-associated objects, while still allowing for future diagnostics and review of orphaned data if needed.
+
+- **Channels And Groups have parents**: Each channel is uniquely associated with a parent category_group, identified by `category_group_id`. This relationship is canonical and used for hierarchy, moderation, and deduplication.
+- **Streams have parents**: Each stream is uniquely associated with a parent channel, identified by `channel_id`. This supports grouping, diagnostics, and moderation at the channel level.
+- **Category groups do not have parents**: category_groups are flattened and deduplicated from the incoming source data. There is no parent/child hierarchy wihtin category groups in the canonical model, even if the source data contains a `parent_id` field. This ensures a flat, deduplicated set of category groups for robust grouping and moderation.
+
+These relationships are reflected in the schema and should be respected in all ingestion, deduplication, and moderation logic.
+
+# Implementation Table & Order
+
 | Step | Function Name                        | Purpose                                                      | Module           |
 |------|---------------------------------------|--------------------------------------------------------------|------------------|
 | 1    | _self_init                           | Ensure DB/schema exist, create if missing                    | utils/dbops.py   |

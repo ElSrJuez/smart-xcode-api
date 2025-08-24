@@ -1,7 +1,49 @@
+# Utility: map API action to category using schema
+def get_category_for_action(action):
+	_self_init()
+	global _schema
+	if _schema is None:
+		_load_schema()
+	for obj in _schema.get('object_categories', []):
+		if 'actions' in obj and action in obj['actions']:
+			return obj['name']
+	return None
+
+import hashlib
+from tinydb import Query
+
+def deduplicate_object(category, data):
+	"""
+	Deduplicate an object in the given category using normalized identifiers.
+	If a duplicate exists, merge fields and return the merged object.
+	If not, return the original data.
+	"""
+	db = _get_db()
+	table = db.table(category)
+	dedup_keys = []
+	if 'id' in data:
+		dedup_keys.append(data['id'])
+	if 'identifiers' in data and isinstance(data['identifiers'], list):
+		dedup_keys.extend(data['identifiers'])
+	norm_keys = set(str(k).strip().lower() for k in dedup_keys if k)
+	if not norm_keys:
+		return data  # No deduplication possible
+	q = Query()
+	cond = None
+	for k in norm_keys:
+		cond = (q.id == k) if cond is None else (cond | (q.id == k))
+		if 'identifiers' in data:
+			cond = cond | (q.identifiers.any([k]))
+	matches = table.search(cond) if cond is not None else []
+	if matches:
+		existing = matches[0]
+		merged = dict(existing)
+		merged.update({k: v for k, v in data.items() if v is not None})
+		return merged
+	return data
 
 
 # Deduplication logic is now in api/discovery.py for modularity.
-from utils.discovery import deduplicate_object
 """
 git ---
 """
@@ -84,6 +126,7 @@ except Exception as e:
 
 def add_object(category, data):
 	"""Add a new object to the database in the given category."""
+	_self_init()
 	try:
 		validate_against_schema(category, data)
 		db = _get_db()
@@ -98,6 +141,7 @@ def add_object(category, data):
 
 def update_object(category, identifiers, data):
 	"""Update an existing object in the database by identifiers."""
+	_self_init()
 	try:
 		validate_against_schema(category, data)
 		db = _get_db()
@@ -116,6 +160,7 @@ def update_object(category, identifiers, data):
 
 def get_object(category, identifiers):
 	"""Retrieve a single object by identifiers. Returns None if not found."""
+	_self_init()
 	try:
 		db = _get_db()
 		table = db.table(category)
@@ -136,6 +181,7 @@ def get_object(category, identifiers):
 
 def find_objects(category, filters=None):
 	"""Find objects in a category matching filters. If filters is None or empty, returns all objects."""
+	_self_init()
 	try:
 		db = _get_db()
 		table = db.table(category)
@@ -157,6 +203,7 @@ def find_objects(category, filters=None):
 
 def delete_object(category, identifiers):
 	"""Delete an object from the database by identifiers. Returns number of objects deleted."""
+	_self_init()
 	try:
 		db = _get_db()
 		table = db.table(category)
@@ -176,6 +223,7 @@ def delete_object(category, identifiers):
 
 def touch_object(category, identifiers, data):
 	"""Add if new, or update last_seen if exists. Deduplicates before upsert. Returns object id or update count."""
+	_self_init()
 	db = _get_db()
 	table = db.table(category)
 	merged_data = deduplicate_object(category, data)

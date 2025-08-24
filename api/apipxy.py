@@ -1,3 +1,5 @@
+from utils.discovery import parse_xc, ingest_object
+from utils.dbops import get_category_for_action
 # This is a simple API reverse proxy based on FastAPI.
 # Main design parameters are transparency and simplicity.
 # Main objective is to have simple, robust object logging that retains the transactions' native schema.
@@ -124,6 +126,28 @@ async def proxy(request: Request, path: str):
 				content=body,
 				timeout=30.0
 			)
+		# Event-driven discovery ingestion for XC API using schema-driven mapping
+		action = params.get('action', '').lower()
+		if resp.status_code == 200 and resp.headers.get('content-type', '').startswith('application/json'):
+			try:
+				data = resp.json()
+			except Exception as e:
+				logmod.log_message('error', f"Failed to parse JSON for discovery ingestion: {e}")
+				data = None
+			category = get_category_for_action(action)
+			if data and category:
+				try:
+					discovered = list(parse_xc(data, category=category))
+					count = 0
+					for obj in discovered:
+						try:
+							ingest_object(category, obj)
+							count += 1
+						except Exception as e:
+							logmod.log_message('error', f"Failed to ingest object in {category}: {e} | obj={obj}")
+					logmod.log_message('info', f"Discovery ingestion complete for action={action}: {count} objects ingested.")
+				except Exception as e:
+					logmod.log_message('error', f"Discovery ingestion failed for action={action}: {e}")
 	except httpx.RequestError as exc:
 		import collections.abc
 		def format_exc_chain(e):
