@@ -94,6 +94,80 @@ The admin UI renders a nested, collapsible hierarchy:
 > This is a core project value—see utils/config.py and admin_utils/admin_config.py for canonical enforcement patterns.
 # Guidance for Future Admin App Maintainers (2025-08-24)
 
+## Recent Achievements (2025-08)
+
+- **DRY, Schema-Driven UI:**
+	- All category/channel/stream lookups and UI rendering are now strictly schema-driven and canonical. No index-based or non-canonical lookups remain.
+	- All category, channel, and stream IDs are string-based and canonical throughout the UI and backend.
+	- The UI is rendered using a single Jinja2 template with a macro for DRYness; no code duplication.
+
+- **Minimal, Standalone, Modern UI:**
+	- The admin UI is a standalone HTML template (no base/master extends), using Bootstrap 5 for layout and components.
+	- All collapse/expand (chevron) logic is handled natively by Bootstrap 5 JS and CSS, with no bandaids or workarounds.
+	- Expanding/collapsing a category is a pure UI action: it fetches and displays canonical details (last seen, first seen, stats, channel list) but never triggers admin actions.
+	- Timestamps (last_seen, first_seen) are now formatted as human-readable dates in the UI (client-side, DRY).
+
+- **Maintenance Mode & Toggles:**
+	- Maintenance mode is controlled by a prominent toggle at the top of the UI, reflecting backend state in real time.
+	- Category enable/disable toggles are only enabled when maintenance mode is ON, and POST to the backend when toggled.
+	- All toggle logic is decoupled from collapse/expand logic.
+
+- **Canonical Accessors & Error Handling:**
+	- All DB and schema access is routed through canonical accessors in `admin_utils/admin_dbops.py` and `utils/dbops.py`.
+	- No in-code defaults or fallbacks: all config and schema must be present, or the app fails fast.
+	- All errors are logged and surfaced to the user in a clear, actionable way.
+
+- **No Bandaids, No Duplicates:**
+	- All bandaid templates (base.html, master.html, etc.) have been removed.
+	- The UI is minimal, DRY, and robust, with no unnecessary complexity.
+
+---
+
+## What’s Next / TODO (as of 2025-08-24)
+
+1. **Smart Tag CRUD:**
+	 - Implement a schema-driven CRUD interface for smart tags (include/exclude, context-aware) in the admin UI.
+	 - Tags should be manageable per category/channel/stream, with clear association and validation.
+
+2. **Statistics Bar:**
+	 - Add a summary statistics bar at the top of the UI (total categories, channels, streams, etc.).
+	 - All stats must be computed from the canonical DB and schema, never hardcoded.
+
+3. **Bulk Moderation (Optional):**
+	 - Consider adding safe, schema-driven bulk actions (e.g., enable/disable all in group) with confirmation dialogs.
+
+4. **Diagnostics & Audit (Optional):**
+	 - Add diagnostics for orphaned/discarded objects and moderation status.
+	 - Consider logging admin actions for future auditability.
+
+5. **Testing & Documentation:**
+	 - Add or expand unit/integration tests for all admin logic.
+	 - Keep this README and dbschema.md up to date as features evolve.
+
+6. **Security Reminder:**
+	 - All admin endpoints must remain isolated from the public internet. No in-app authentication; rely on external security (proxy, firewall, etc.).
+
+---
+
+## Guidance for New Maintainers & Assistants
+
+- **DRY First:**
+	- Always use macros, helpers, and canonical accessors. Never duplicate logic or markup.
+- **Schema-Driven:**
+	- All UI and backend logic must be driven by the canonical schema. Never hardcode field names or relationships.
+- **Fail Fast:**
+	- If config or schema is missing, fail fast and log a clear error. Never fallback or continue with partial data.
+- **UI/UX:**
+	- Keep the UI minimal, modern, and accessible. Use Bootstrap 5 and native components. Avoid bandaids and workarounds.
+- **Canonical IDs:**
+	- Always use string-based, schema-defined IDs for all lookups and API calls.
+- **No Bandaids:**
+	- If you find a workaround or bandaid, refactor to a canonical, DRY solution.
+- **Documentation:**
+	- Update this README and dbschema.md with every significant change.
+
+---
+
 ## Admin Web Interface Vision (2025-08-24)
 
 - **UI/UX Goals:**
