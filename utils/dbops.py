@@ -1,10 +1,83 @@
+# ============================
+# Module Initialization Structure
+# ============================
+#
+# - All imports are at the top of the file.
+# - All global state is defined at the top.
+# - The init_module() function performs all one-time initialization (DB, schema, logging).
+# - No initialization is performed at the top level except for defining globals and calling init_module().
+# - init_module() is idempotent and guarded by a module-level flag.
+# - All other functions assume initialization has already occurred.
+
+def _log_import_context():
+	frame = inspect.currentframe()
+	outer_frames = inspect.getouterframes(frame)
+	importing_module = outer_frames[1].filename if len(outer_frames) > 1 else None
+	process_id = os.getpid()
+	_name = __name__
+	_file = __file__
+	logging.log_message('debug', f"[dbops] Imported by: {importing_module} | pid={process_id} | __name__={_name} | __file__={_file}")
+
+def init_module():
+	global _DISCOVERY_DB_PATH, _SCHEMA_PATH, _db, _schema, _INIT_OK, _DEBUG_MODE
+	if _INIT_OK:
+		return
+	_log_import_context()
+	try:
+		log_level = config.get('app', 'logging_common_level', str)
+		if log_level and log_level.upper() == 'DEBUG':
+			_DEBUG_MODE = True
+	except Exception:
+		pass
+	if _DISCOVERY_DB_PATH is None or _SCHEMA_PATH is None:
+		_DISCOVERY_DB_PATH = config.get('db', 'discovery_db_path')
+		_SCHEMA_PATH = config.get('db', 'schema_path')
+	if not os.path.exists(_DISCOVERY_DB_PATH):
+		with open(_DISCOVERY_DB_PATH, 'w', encoding='utf-8') as f:
+			json.dump({}, f)
+		logging.log_message('info', f"Created new discovery DB at {_DISCOVERY_DB_PATH}")
+	if not os.path.exists(_SCHEMA_PATH):
+		logging.log_message('error', f"Schema file not found: {_SCHEMA_PATH}")
+		_INIT_OK = False
+		return
+	# No need for _db_lock anymore; single-threaded init_module
+	if _db is None:
+		_db = TinyDB(_DISCOVERY_DB_PATH, storage=JSONStorage)
+		logging.log_message('info', f"Initialized TinyDB at {_DISCOVERY_DB_PATH} with JSONStorage.")
+	try:
+		with open(_SCHEMA_PATH, 'r', encoding='utf-8') as f:
+			_schema = json.load(f)
+	except Exception as e:
+		logging.log_message('error', f"Failed to load schema: {e}")
+		_INIT_OK = False
+		return
+	if _db is not None and _schema is not None:
+		_INIT_OK = True
+		logging.log_message('info', 'dbops.py: Initialization complete, DB and schema loaded.')
+	else:
+		_INIT_OK = False
+		logging.log_message('error', 'dbops.py: Initialization failed.')
+
 import os
 import json
 import hashlib
+import inspect
+import threading
+import sys
 from tinydb import TinyDB, Query
 from tinydb.storages import JSONStorage
 from tinydb.middlewares import CachingMiddleware
 from utils import config, logging
+
+# Enhanced debug logging for import diagnostics
+
+frame = inspect.currentframe()
+outer_frames = inspect.getouterframes(frame)
+importing_module = outer_frames[1].filename if len(outer_frames) > 1 else None
+process_id = os.getpid()
+_name = __name__
+_file = __file__
+logging.log_message('debug', f"[dbops] Imported by: {importing_module} | pid={process_id} | __name__={_name} | __file__={_file}")
 
 
 
@@ -14,6 +87,8 @@ from utils import config, logging
 _DISCOVERY_DB_PATH = None
 _SCHEMA_PATH = None
 
+
+# --- Singleton TinyDB instance and schema ---
 _db = None
 _schema = None
 _INIT_OK = False
@@ -29,39 +104,6 @@ except Exception:
 # ============================
 # Private Helpers and Initialization
 # ============================
-def _self_init():
-	global _db, _DISCOVERY_DB_PATH, _SCHEMA_PATH
-	if _DISCOVERY_DB_PATH is None or _SCHEMA_PATH is None:
-		_DISCOVERY_DB_PATH = config.get('db', 'discovery_db_path')
-		_SCHEMA_PATH = config.get('db', 'schema_path')
-	if not os.path.exists(_DISCOVERY_DB_PATH):
-		with open(_DISCOVERY_DB_PATH, 'w', encoding='utf-8') as f:
-			json.dump({}, f)
-		logging.log_message('info', f"Created new discovery DB at {_DISCOVERY_DB_PATH}")
-	if not os.path.exists(_SCHEMA_PATH):
-		raise FileNotFoundError(f"Schema file not found: {_SCHEMA_PATH}")
-	_db = TinyDB(_DISCOVERY_DB_PATH, storage=CachingMiddleware(JSONStorage))
-
-def _load_schema():
-	global _schema
-	if _SCHEMA_PATH is None:
-		raise RuntimeError("SCHEMA_PATH is not set.")
-	with open(_SCHEMA_PATH, 'r', encoding='utf-8') as f:
-		_schema = json.load(f)
-
-
-
-# Initialize DB and schema at import time
-try:
-	_self_init()
-	_load_schema()
-	assert _db is not None, "DB initialization failed"
-	assert _schema is not None, "Schema initialization failed"
-	_INIT_OK = True
-	logging.log_message('info', 'dbops.py: Initialization complete, DB and schema loaded.')
-except Exception as e:
-	_INIT_OK = False
-	logging.log_message('error', f'dbops.py: Initialization failed: {e}')
 
 # ============================
 # Canonical Schema Accessors
@@ -204,9 +246,11 @@ git ---
 
 def _get_db():
 	global _db
-	if _db is None:
-		_self_init()
+	if _db is None or not _INIT_OK:
+		init_module()
 	return _db
+# Call module initializer at import time
+init_module()
 
 
 def add_object(category, data):

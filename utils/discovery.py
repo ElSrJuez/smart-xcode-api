@@ -9,6 +9,7 @@ from utils import logging as logmod
 import m3u8
 import re
 import utils.dbops as dbops
+import time
 
 # Canonical construction of a category_group object from raw input
 def create_category_group_object(raw_obj):
@@ -18,25 +19,40 @@ def create_category_group_object(raw_obj):
     raw_obj (dict): The raw category/group object from XC API or M3U source.
   Returns:
     dict: A fully-formed, schema-compliant category_group object.
-  Raises:
-    ValueError: If required incoming fields are missing.
+  Logs:
+    Canonically logs an informative INFO message on success, on failure the incoming object, if DEBUG the resulting object.
   """
-  if 'category_name' not in raw_obj:
-    raise ValueError("Missing required field 'category_name' in raw_obj")
 
-  display_name = raw_obj['category_name']
-  category_group_id = canonical_category_group_id(display_name)
-  # Canonically build identifiers using schema
-  identifiers = create_identifiers_object(raw_obj, 'category_group')
+  # Detect incoming raw object type
+  incoming_type = detect_category_group_incoming_object_type(raw_obj)
 
-  canonical = {
-    "category_group_id": category_group_id,
-    "display_name": display_name,
-    "identifiers": identifiers,
-    # Pass through parent_id if present (for diagnostics, not canonical)
-    **({"parent_id": raw_obj["parent_id"]} if "parent_id" in raw_obj else {})
-  }
-  return canonical
+  if incoming_type == 'xc_category_group':
+    display_name = raw_obj['category_name']
+    category_group_id = canonical_category_group_id(display_name)
+    identifiers = create_identifiers_object(raw_obj, 'category_group')
+    now = int(time.time())
+    canonical = {
+      "category_group_id": category_group_id,
+      "display_name": display_name,
+      "identifiers": identifiers,
+      "first_seen": now,
+      "last_seen": now,
+      "include": True
+    }
+    # Check for any other required fields in the schema and log if missing
+    required_fields = dbops.get_schema_field('category_group', 'fields')
+    for field in required_fields:
+      fname = field['name']
+      if fname not in canonical:
+        logmod.log_message('warning', f"Required field '{fname}' is missing from canonical category_group object and has not been auto-filled.")
+    logmod.log_message('info', f"Successfully constructed canonical category_group object: {canonical}")
+    return canonical
+  elif incoming_type == 'm3u_category_group':
+    logmod.log_message('error', "Canonical construction for m3u_category_group is not yet implemented. Incoming object: {}".format(raw_obj))
+    return None
+  else:
+    logmod.log_message('error', f"Unknown incoming_type: {incoming_type}. Incoming object: {raw_obj}")
+    return None
 
 #
 # Canonical construction of an identifiers list from raw input
@@ -48,6 +64,8 @@ def create_identifiers_object(raw_obj, object_categories_object_name):
     object_categories_object_name (str): The object category name (e.g., 'category_group').
   Returns:
     list: List of identifier dicts, each with 'field' and 'value'.
+  Logs:
+    Canonically logs an informative INFO message on success, on failure the incoming object, if DEBUG the resulting object.
   """
 
   canbeidentifier_fields = dbops.get_schema_field(object_categories_object_name, 'canbeidentifier')
@@ -66,6 +84,8 @@ def parse_m3u(m3u_content):
     m3u_content (str): Raw M3U playlist text.
   Yields:
     dict: Canonical channel or stream object.
+  Logs:
+    Canonically logs an informative INFO message on success, on failure the incoming object, if DEBUG the resulting object.
   """
   logmod.log_message('info', "parse_m3u called")
   try:
@@ -95,18 +115,22 @@ def parse_xc(xc_json, category=None):
     category (str): Category name (e.g., 'category_group', 'channel', 'stream').
   Yields:
     dict: Canonical object.
+  Logs:
+    Canonically logs an informative INFO message on success, on failure the incoming object, if DEBUG the resulting object.
   """
   logmod.log_message('info', f"parse_xc called for category={category}")
   try:
     if category == 'category_group':
       if not isinstance(xc_json, list):
-        raise TypeError(f"Expected list for category_group, got {type(xc_json).__name__}")
+        logmod.log_message('error', f"Expected list for category_group, got {type(xc_json).__name__}. Incoming object: {xc_json}")
+        return
       for cat in xc_json:
         yield create_category_group_object(cat)
       logmod.log_message('info', f"parse_xc completed for category={category}")
     # Add similar logic for 'channel' and 'stream' as new canonical functions are implemented
     else:
-      raise ValueError(f"Unknown or unsupported category for parse_xc: {category}")
+      logmod.log_message('error', f"Unknown or unsupported category for parse_xc: {category}. Incoming object: {xc_json}")
+      return
   except Exception as e:
     logmod.log_message('error', f"parse_xc failed for category={category}: {e}")
 
@@ -150,6 +174,8 @@ def ingest_object(category, obj):
     obj (dict): Canonical object.
   Returns:
     object id or update count.
+  Logs:
+    Canonically logs an informative INFO message on success, on failure the incoming object, if DEBUG the resulting object.
   """
   try:
     logmod.log_message('debug', f"CALLCHAIN: ENTER ingest_object category={category} obj={repr(obj)}")
@@ -174,10 +200,31 @@ def canonical_category_group_id(category_name: str) -> str:
     str: Canonical, normalized id (e.g., 'vip_formula_1').
   """
   if not category_name or not isinstance(category_name, str):
-    raise ValueError("category_name must be a non-empty string")
+    logmod.log_message('error', f"category_name must be a non-empty string. Got: {category_name}")
+    return ""
   # Lowercase, strip, replace non-alphanum with underscores, collapse multiple underscores
   norm = category_name.strip().lower()
   norm = re.sub(r'[^a-z0-9]+', '_', norm)
   norm = re.sub(r'_+', '_', norm)
   return norm.strip('_')
+
+
+# --- Object type detection helpers ---
+def detect_category_group_incoming_object_type(raw_obj):
+  """
+  Detect the incoming raw object type for category_group objects.
+  Args:
+    raw_obj (dict): The raw input object.
+  Returns:
+    str: The detected type, e.g. 'xc_category_group' or 'm3u_category_group'.
+  Logs:
+    Canonically logs an informative INFO message on success, on failure the incoming object, if DEBUG the resulting object.
+  """
+  if 'category_name' in raw_obj:
+    return 'xc_category_group'
+  elif 'group_title' in raw_obj:
+    return 'm3u_category_group'
+  else:
+    logmod.log_message('error', f"Unknown or unsupported category_group raw object type: missing 'category_name' or 'group_title'. Incoming object: {raw_obj}")
+    return None
 

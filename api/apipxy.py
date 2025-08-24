@@ -213,4 +213,4 @@ if __name__ == "__main__":
 	elif len(sys.argv) == 3:
 		host = sys.argv[1]
 		port = int(sys.argv[2])
-	uvicorn.run("api.apipxy:app", host=host, port=int(port), reload=True)
+	uvicorn.run("api.apipxy:app", host=host, port=int(port))
