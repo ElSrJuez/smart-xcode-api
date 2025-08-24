@@ -2,10 +2,11 @@
 
 # Parent/Child Relationships & Flattening
 
+
 # Orphan Handling
 
 - **Programmes**: Programme entries that cannot be associated with any stream, channel, or category_group should be discarded to save memory and storage. (Future TODO: Track statistics and summaries about discarded orphans for diagnostics.)
-- **Streams and Channels**: Streams or channels that cannot be associated with a category_group should be minimally recorded (the just the corresponding id, name and url fields only when available plus an `orphaned` flag). Objective: for reporting/tracking purposes.
+- **Streams and Channels**: Streams or channels that cannot be associated with a parent (i.e., category_group_id or channel_id is null) should be minimally recorded (just the corresponding id, name, and url fields if available). Objective: for reporting/tracking purposes.
 - **Priority**: The top priority for orphan handling is to avoid disruption from cleaner, well-associated incoming data. Orphaned data should never pollute or interfere with the canonical, well-structured records.
 
 This approach ensures the database remains clean, efficient, and focused on actionable, well-associated objects, while still allowing for future diagnostics and review of orphaned data if needed.
@@ -207,3 +208,28 @@ Note: This schema is strictly based on the canonical fields present in the sourc
 # - This model supports grouping, summarization, and minimal tracking, while keeping admin moderation simple.
 
 Addendum: The `discovered_m3u_streams` schema is designed to support robust, minimal, and flexible object discovery from variable M3U/playlist sources, as described in the project README. It is intended for grouping, summarization, and passive cataloging of IPTV streams, not for strict validation or full-fidelity archival.
+
+## Canonical Identifiers and the `identifiers` List
+
+- Each object category (e.g., `category_group`, `channel`, `stream`) must have a canonical, normalized identifier field (e.g., `category_group_id`, `channel_id`, `stream_id`).
+- This canonical ID is always included as a key/value pair in the object's `identifiers` list, with `field` set to the canonical field name (e.g., `category_group_id`) and `value` set to the canonical value (e.g., `vip_formula_1`).
+- The `identifiers` list also includes all other known aliases or source names for the object (e.g., the original `name`, `category_name`, or `group-title` fields from the source data).
+- This design allows for robust deduplication, lookup, and referencing by any known alias, but always provides a single, authoritative, schema-driven ID for storage, referencing, and hierarchy.
+- Example for a category group:
+
+```json
+{
+  "category_group_id": "vip_formula_1",
+  "display_name": "VIP | FORMULA 1",
+  "identifiers": [
+    {"field": "category_group_id", "value": "vip_formula_1"},
+    {"field": "name", "value": "VIP | FORMULA 1"},
+    {"field": "category_name", "value": "VIP | FORMULA 1"}
+  ],
+  ...
+}
+```
+
+- The canonical ID is used for all parent/child relationships and for deduplication. The `identifiers` list is used for matching, merging, and alias resolution.
+
+---

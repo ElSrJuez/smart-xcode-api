@@ -1,4 +1,3 @@
-
 from utils import logging as logmod
 import m3u8
 from utils.dbops import touch_object, validate_against_schema
@@ -47,13 +46,12 @@ def parse_xc(xc_json, category=None):
         raise TypeError(f"Expected list for category_group, got {type(xc_json).__name__}")
       for cat in xc_json:
         obj = {
-          "name": cat.get('category_name'),
+          "display_name": cat.get('category_name'),
           "parent_id": cat.get('parent_id'),
-          "attributes": {},
           "first_seen": None,
           "last_seen": None
         }
-        logmod.log_message('debug', f"Discovered XC category: name={obj['name']}")
+        logmod.log_message('debug', f"Discovered XC category: display_name={obj['display_name']}")
         yield obj
     elif category == 'channel':
       if not isinstance(xc_json, dict):
@@ -116,8 +114,16 @@ def normalize_identifiers(obj):
   Returns:
     dict: Normalized object.
   """
-  logmod.log_message('info', "normalize_identifiers called (stub)")
-  # TODO: Implement normalization
+  logmod.log_message('info', "normalize_identifiers called")
+  # If this is a category_group, ensure canonical id is present (from display_name)
+  if obj.get('display_name') and 'category_group_id' not in obj:
+    obj['category_group_id'] = canonical_category_group_id(obj['display_name'])
+  # Only build identifiers from incoming data (not canonical fields)
+  if 'identifiers' not in obj:
+    obj['identifiers'] = []
+  # For category_group, add identifier from display_name if present
+  if obj.get('display_name'):
+    obj['identifiers'].append({'field': 'category_name', 'value': obj['display_name']})
   return obj
 
 def ingest_object(category, obj):
@@ -130,17 +136,38 @@ def ingest_object(category, obj):
     object id or update count.
   """
   try:
+    logmod.log_message('debug', f"CALLCHAIN: ENTER ingest_object category={category} obj={repr(obj)}")
     ident = obj.get('id') if 'id' in obj else obj.get('name')
     logmod.log_message('debug', f"ingest_object called for category={category}, ident={ident}")
     norm_obj = normalize_identifiers(obj)
+    logmod.log_message('debug', f"CALLCHAIN: BEFORE validate_against_schema category={category} norm_obj={repr(norm_obj)}")
     validate_against_schema(category, norm_obj)
-    # Use 'id' if present, otherwise 'name' as identifier for touch_object
+    logmod.log_message('debug', f"CALLCHAIN: AFTER validate_against_schema category={category} norm_obj={repr(norm_obj)}")
     id_key = 'id' if 'id' in norm_obj else 'name'
     result = touch_object(category, {id_key: norm_obj[id_key]}, norm_obj)
+    logmod.log_message('debug', f"CALLCHAIN: EXIT ingest_object category={category} obj={repr(obj)} result={result}")
     logmod.log_message('info', f"Ingested object in {category}: {norm_obj.get(id_key, None)} result={result}")
     return result
   except Exception as e:
     logmod.log_message('error', f"ingest_object failed for {category} obj={obj}: {e}")
 def deduplicate_object(category, data):
-  raise
+  from utils import dbops
+  return dbops.deduplicate_object(category, data)
+
+def canonical_category_group_id(category_name: str) -> str:
+    """
+    Generate a canonical, normalized identifier for a category group.
+    Args:
+        category_name (str): The raw category name (e.g., 'VIP | FORMULA 1').
+    Returns:
+        str: Canonical, normalized id (e.g., 'vip_formula_1').
+    """
+    if not category_name or not isinstance(category_name, str):
+        raise ValueError("category_name must be a non-empty string")
+    # Lowercase, strip, replace non-alphanum with underscores, collapse multiple underscores
+    import re
+    norm = category_name.strip().lower()
+    norm = re.sub(r'[^a-z0-9]+', '_', norm)
+    norm = re.sub(r'_+', '_', norm)
+    return norm.strip('_')
 
