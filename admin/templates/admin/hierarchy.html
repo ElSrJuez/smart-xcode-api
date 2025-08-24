@@ -151,6 +151,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const targetId = twisty.getAttribute('data-bs-target');
     const targetElement = document.querySelector(targetId);
 
+    // Helper to format epoch seconds to YYYY-MM-DD HH:mm:ss
+    function formatTimestamp(ts) {
+      if (!ts || isNaN(ts)) return 'N/A';
+      // Accept both string and number
+      const d = new Date(Number(ts) * 1000);
+      if (isNaN(d.getTime())) return 'N/A';
+      const pad = n => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
     targetElement.addEventListener('show.bs.collapse', function() {
       const categoryId = targetId.replace('#cat-', '');
       fetch(`/admin/api/category/${categoryId}`)
@@ -159,8 +169,8 @@ document.addEventListener('DOMContentLoaded', function() {
           const cardBody = targetElement.querySelector('.card-body');
           // Show canonical details: last_seen, stats, and channel list
           let html = '';
-          html += `<div class='mb-2'><strong>Last Seen:</strong> ${data.last_seen || 'N/A'}</div>`;
-          html += `<div class='mb-2'><strong>First Seen:</strong> ${data.first_seen || 'N/A'}</div>`;
+          html += `<div class='mb-2'><strong>Last Seen:</strong> ${formatTimestamp(data.last_seen)}</div>`;
+          html += `<div class='mb-2'><strong>First Seen:</strong> ${formatTimestamp(data.first_seen)}</div>`;
           html += `<div class='mb-2'><strong>Channels:</strong> ${data.stats ? data.stats.num_channels : 0}, <strong>Streams:</strong> ${data.stats ? data.stats.num_streams : 0}</div>`;
           if (data.channels && data.channels.length) {
             html += '<div class="mt-2"><strong>Channels:</strong><ul class="mb-0">';
