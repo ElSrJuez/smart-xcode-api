@@ -42,6 +42,18 @@ The schema used for these objects is synthesis/minimal, as the main objective is
 In the future the discovery feature will also support automatic smart discovery of recurring string/tags that can be used for inclusion/exclusion filters (i.e, substrings for grouping variants of the same channel (1, 2, 3 or "HD", "SD"))
 Minimal tracking with timestamping is another feature, when an object was first discovered - so that automatic age based cleanup can be done of unused/unrequested stale objects.
 
+#### Schema-Driven Field Updates
+
+- The discovery ingestion and update logic now respects the `updatefields` array in the schema for each object category.
+- For example, in `category_group`, only fields listed in `updatefields` (such as `identifiers` and `last_seen`) are updated on subsequent ingestions; all other fields (like `first_seen`) remain unchanged after initial creation.
+- This ensures accurate tracking of when an object was first seen versus last seen, and prevents accidental overwrites of fields not meant to be updated.
+
+#### Implementation Details
+
+- The update logic in `utils/dbops.py` uses the `get_schema_field` helper to fetch the `updatefields` list from the loaded schema at runtime.
+- Only fields present in `updatefields` are included in update operations; all others are left untouched unless a full insert occurs.
+- This approach is DRY, efficient, and canonical, leveraging the schema loaded at module initialization.
+
 #### Passive JSONL Transaction logging
 When complete jsonl is enabled, this feature also logs a jsonl object with the payload of each transaction so that the detail can be used for troubleshooting and manual analysis.
 Since the XC API is not well documented and the M3U text objects and the EPG XML objects may also be made available from the endpoint, this log stores records of the payloads (not entire API transactions).
