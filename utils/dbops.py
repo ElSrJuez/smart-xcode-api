@@ -385,7 +385,15 @@ def touch_object(category, identifiers, data):
 	existing = table.get(cond)
 	if existing:
 		if isinstance(merged_data, dict):
-			update_fields = {k: v for k, v in merged_data.items() if k != 'id'}
+			# Only update fields listed in 'updatefields' from the schema, if present
+			try:
+				updatefields = get_schema_field(category, 'updatefields')
+			except Exception:
+				updatefields = None
+			if updatefields:
+				update_fields = {k: v for k, v in merged_data.items() if k in updatefields and k != 'id'}
+			else:
+				update_fields = {k: v for k, v in merged_data.items() if k != 'id'}
 			result = table.update(update_fields, cond)
 			logging.log_message('debug', f"CALLCHAIN: EXIT touch_object (update) category={category} identifiers={repr(identifiers)} result={result}")
 			logging.log_message('info', f"Touched (deduped+updated) object in {category} with {identifiers}: {result}")
