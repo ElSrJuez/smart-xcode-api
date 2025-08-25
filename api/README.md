@@ -35,22 +35,41 @@ This document describes the API proxy feature of the smart-xcode-api project, as
 
 ### Object Discovery Feature
 #### Passive Automatic Object Discovery
-The api service actively but silently discovers new standard iptv objects like streams, categories, epg source associations, etc. up to *but not including* individual programmes.
+The api service actively but silently discovers new standard iptv objects like streams, meta_channels (canonical channels), categories, epg source associations, etc. up to *but not including* individual programmes.
 The incoming data is assumed to be imperfect/dirty, with undesirable prefixes, duplicity, orphaned, inconsistent syntax among other common flaws
 The incoming data should also be assumed to be potentially, undesirable large / many records
 The schema used for these objects is synthesis/minimal, as the main objective is for potential grouping and summarization avenues - recognizing that specifics is enemy #1 of grouping.
 In the future the discovery feature will also support automatic smart discovery of recurring string/tags that can be used for inclusion/exclusion filters (i.e, substrings for grouping variants of the same channel (1, 2, 3 or "HD", "SD"))
 Minimal tracking with timestamping is another feature, when an object was first discovered - so that automatic age based cleanup can be done of unused/unrequested stale objects.
 
+
+#### Canonical Object Construction (2025-08-25)
+
+- **meta_channel objects:** Canonical meta_channel objects are now constructed using the new `create_meta_channel_object(raw_obj)` function. This function uses the first available field from the schema's `canbeid` array to set both the `display_name` and the canonical `meta_channel_id` (via `canonical_meta_channel_id`).
+- **category_group objects:** The canonical ID and display_name are now always derived from the first present field in the schema's `canbeid` array, not a hardcoded field.
+- **stream objects:** The canonical ID for a stream is always the URL field, as this is unique and stable.
+- **Schema-driven canbeid logic:** All canonical object construction now uses the schema's `canbeid` array for robust, source-agnostic deduplication and grouping.
+
 #### Schema-Driven Field Updates
 
 - The discovery ingestion and update logic now respects the `updatefields` array in the schema for each object category.
-- For example, in `category_group`, only fields listed in `updatefields` (such as `identifiers` and `last_seen`) are updated on subsequent ingestions; all other fields (like `first_seen`) remain unchanged after initial creation.
+- For example, in `category_group` and `meta_channel`, only fields listed in `updatefields` (such as `identifiers` and `last_seen`) are updated on subsequent ingestions; all other fields (like `first_seen`) remain unchanged after initial creation.
 - This ensures accurate tracking of when an object was first seen versus last seen, and prevents accidental overwrites of fields not meant to be updated.
 
 #### Implementation Details
 
 - The update logic in `utils/dbops.py` uses the `get_schema_field` helper to fetch the `updatefields` list from the loaded schema at runtime.
+- Canonical object construction for meta_channel and category_group now uses the first present field from the schema's `canbeid` array for both display_name and canonical ID.
+---
+
+## For New Maintainers (2025-08-25)
+
+- The canonical construction of meta_channel and category_group objects is now schema-driven, using the first available field from the `canbeid` array for both display_name and canonical ID.
+- The function `create_meta_channel_object(raw_obj)` is the only entry point for canonical meta_channel construction, mirroring the approach for category_group.
+- For streams, the canonical ID is always the URL.
+- All update logic is strictly controlled by the schema's `updatefields` array.
+- Passive JSONL logging and robust troubleshooting are fully enforced.
+- See `utils/dbschema.md` for the latest schema and canonical construction details.
 - Only fields present in `updatefields` are included in update operations; all others are left untouched unless a full insert occurs.
 - This approach is DRY, efficient, and canonical, leveraging the schema loaded at module initialization.
 

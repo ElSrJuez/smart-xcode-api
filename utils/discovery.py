@@ -11,6 +11,48 @@ import re
 import utils.dbops as dbops
 import time
 
+# Canonical construction of a meta_channel object from raw input
+def create_meta_channel_object(raw_obj):
+  """
+  Synthesize a canonical, schema-compliant meta_channel object from raw input.
+  Args:
+    raw_obj (dict): The raw channel object from XC API or M3U source.
+  Returns:
+    dict: A fully-formed, schema-compliant meta_channel object.
+  Logs:
+    Canonically logs an informative INFO message on success, on failure the incoming object, if DEBUG the resulting object.
+  """
+  # Determine the best source field for display_name and meta_channel_id using canbeid from schema
+  canbeid_fields = dbops.get_schema_field('meta_channel', 'canbeid')
+  display_name = None
+  for field in canbeid_fields:
+    if field in raw_obj and raw_obj[field]:
+      display_name = raw_obj[field]
+      break
+  if not display_name:
+    logmod.log_message('error', f"No canbeid field found in raw_obj for meta_channel: {raw_obj}")
+    return None
+  meta_channel_id = canonical_meta_channel_id(display_name)
+  identifiers = create_identifiers_object(raw_obj, 'meta_channel')
+  now = int(time.time())
+  canonical = {
+    "meta_channel_id": meta_channel_id,
+    "display_name": display_name,
+    "category_group_id": raw_obj.get("category_group_id"),
+    "identifiers": identifiers,
+    "first_seen": now,
+    "last_seen": now,
+    "include": True
+  }
+  # Check for any other required fields in the schema and log if missing
+  required_fields = dbops.get_schema_field('meta_channel', 'fields')
+  for field in required_fields:
+    fname = field['name']
+    if fname not in canonical:
+      logmod.log_message('warning', f"Required field '{fname}' is missing from canonical meta_channel object and has not been auto-filled.")
+  logmod.log_message('info', f"Successfully constructed canonical meta_channel object: {canonical}")
+  return canonical
+
 # Canonical construction of a category_group object from raw input
 def create_category_group_object(raw_obj):
   """
@@ -191,6 +233,7 @@ def ingest_object(category, obj):
 
 # this seemingly does nothing, please flag for deletion
 
+
 def canonical_category_group_id(category_name: str) -> str:
   """
   Generate a canonical, normalized identifier for a category group.
@@ -204,6 +247,23 @@ def canonical_category_group_id(category_name: str) -> str:
     return ""
   # Lowercase, strip, replace non-alphanum with underscores, collapse multiple underscores
   norm = category_name.strip().lower()
+  norm = re.sub(r'[^a-z0-9]+', '_', norm)
+  norm = re.sub(r'_+', '_', norm)
+  return norm.strip('_')
+
+# Canonical, normalized identifier for meta channels
+def canonical_meta_channel_id(display_name: str) -> str:
+  """
+  Generate a canonical, normalized identifier for a meta channel.
+  Args:
+    display_name (str): The raw display name for the channel (e.g., 'Sky Sports F1 HD').
+  Returns:
+    str: Canonical, normalized id (e.g., 'sky_sports_f1_hd').
+  """
+  if not display_name or not isinstance(display_name, str):
+    logmod.log_message('error', f"display_name must be a non-empty string. Got: {display_name}")
+    return ""
+  norm = display_name.strip().lower()
   norm = re.sub(r'[^a-z0-9]+', '_', norm)
   norm = re.sub(r'_+', '_', norm)
   return norm.strip('_')

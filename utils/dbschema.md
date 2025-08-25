@@ -1,6 +1,13 @@
 # Canonical Database & Schema: 2025-08-24 Update
 
-## Latest Improvements (2025-08-24)
+
+## Latest Improvements (2025-08-25)
+
+- **Canonical meta_channel object construction:** Added `create_meta_channel_object(raw_obj)` for schema-driven, canonical construction of meta_channel objects. This mirrors the approach for category_group, using the first available field from the `canbeid` array in the schema to set both the `display_name` and the canonical `meta_channel_id` (via `canonical_meta_channel_id`).
+- **Schema-driven canbeid logic:** Both category_group and meta_channel canonical ID functions now use the first present field from the schema's `canbeid` list, not a hardcoded field, for normalization and ID synthesis. This ensures robust, source-agnostic deduplication and grouping.
+- **Stream ID is URL:** For stream objects, the canonical ID is simply the stream URL, as this is guaranteed unique and stable.
+- **Passive JSONL logging and updatefields enforcement:** Passive JSONL logging and strict updatefields logic are now fully enforced for all canonical object types, ensuring robust troubleshooting and field-level update control.
+
 
 - **Singleton, Idempotent Initialization:** All DB and schema initialization is performed once, at import, via a guarded `init_module()` in `utils/dbops.py`. No repeated or phantom initializations, even under dev servers.
 - **Strict Schema-Driven Canonical Construction:** All canonical objects (e.g., `category_group`) are constructed strictly according to the schema. No in-code defaults or fallbacks. Any missing required field results in a hard failure, always logged, never silently defaulted or raised.
@@ -47,7 +54,24 @@
 - For each raw object, validate that it contains the required incoming fields for that object type before passing it to the canonical pipeline function.
 - Do not rely solely on the action hint—always check the actual data for the expected fields.
 - This ensures robust, source-agnostic parsing and prevents misclassification or silent data loss.
-# Canonical Construction of category_group Objects
+
+# Canonical Construction of category_group and meta_channel Objects
+
+## Canonical Construction Function: create_meta_channel_object
+
+- All meta_channel objects must be synthesized via the function `create_meta_channel_object(raw_obj)`.
+- This function is the only entry point for constructing a canonical, schema-compliant meta_channel from raw input (XC, M3U, etc).
+- The function selects the first available field from the schema's `canbeid` array as the source for both `display_name` and canonical ID (via `canonical_meta_channel_id`).
+- All other fields are set according to the schema, and missing required fields are logged as errors.
+
+## Canonical Construction Function: create_category_group_object (updated)
+
+- Now uses the first available field from the schema's `canbeid` array for both `display_name` and canonical ID (via `canonical_category_group_id`).
+
+## Canonical Construction Function: Stream
+
+- The canonical ID for a stream object is always the URL field, as this is unique and stable.
+
 
 ## Canonical Construction Function: create_category_group_object
 
@@ -62,7 +86,7 @@
 - Ensures DRYness, atomicity, and schema compliance.
 - Guarantees all category_group objects are constructed in a uniform, auditable way.
 - Centralizes logic for easier maintenance, debugging, and schema evolution.
-# Implementation Table & Order
+# Implementation Table & Order (updated)
 
 # Parent/Child Relationships & Flattening
 
@@ -98,6 +122,7 @@ These relationships are reflected in the schema and should be respected in all i
 | 11   | update_stream_status                 | Update status/quality for a stream URL                       | utils/dbops.py   |
 | 12   | log_discovery_event                  | Log a discovery event for audit/troubleshooting              | utils/dbops.py   |
 | 13   | parse_m3u, parse_xc, parse_epg       | Parse incoming data sources into canonical objects            | api/discovery.py |
+| 14   | create_meta_channel_object           | Canonical construction of meta_channel objects                | utils/discovery.py |
 | 14   | normalize_identifiers                | Normalize identifiers for deduplication                      | api/discovery.py |
 | 15   | ingest_object                        | Main entry: process, validate, dedupe, and store object      | api/discovery.py |
 
@@ -144,7 +169,7 @@ This table documents the canonical order of implementation and the responsibilit
 
 This architecture supports flexible, evolvable, and transparent object discovery and management, as described in the README and concept map.
 
-# Concept Table: General Object Types (XC/EPG/M3U Agnostic)
+# Concept Table: General Object Types (XC/EPG/M3U Agnostic) (updated)
 #
 
 ## Conceptual Groupings and Source Field Mapping
@@ -212,7 +237,7 @@ This architecture supports flexible, evolvable, and transparent object discovery
 | Object Type   | General Fields                                                                 |
 |-------------- |-------------------------------------------------------------------------------|
 | Category Group| category_group_id, display_name, identifiers, include, first_seen, last_seen  |
-| Channel       | channel_id, display_name, category_group_id, identifiers, group, include, first_seen, last_seen |
+| Meta Channel  | meta_channel_id, display_name, category_group_id, identifiers, include, first_seen, last_seen |
 | Stream        | stream_id, display_name, channel_id, url, status (last_status, last_viewed, error_count), first_seen, last_seen |
 | Include/Exclude Tag | tag, type, usage_contexts, include, first_seen, last_seen |
 | Smart Grouping Substring | substring, usage_contexts, include, first_seen, last_seen |
@@ -273,8 +298,9 @@ Note: This schema is strictly based on the canonical fields present in the sourc
 
 Addendum: The `discovered_m3u_streams` schema is designed to support robust, minimal, and flexible object discovery from variable M3U/playlist sources, as described in the project README. It is intended for grouping, summarization, and passive cataloging of IPTV streams, not for strict validation or full-fidelity archival.
 
-## Canonical Identifiers and the `identifiers` List
+## Canonical Identifiers and the `identifiers` List (updated)
 
+- For category_group and meta_channel, the canonical ID is synthesized from the first present field in the schema's `canbeid` array, ensuring robust, source-agnostic deduplication.
 - Each object category (e.g., `category_group`, `channel`, `stream`) must have a canonical, normalized identifier field (e.g., `category_group_id`, `channel_id`, `stream_id`).
 - This canonical ID is always included as a key/value pair in the object's `identifiers` list, with `field` set to the canonical field name (e.g., `category_group_id`) and `value` set to the canonical value (e.g., `vip_formula_1`).
 - The `identifiers` list also includes all other known aliases or source names for the object (e.g., the original `name`, `category_name`, or `group-title` fields from the source data).
