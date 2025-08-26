@@ -100,9 +100,40 @@ logging_api_log_file = log/discovery/discovery.log
 - Fail fast: any missing or invalid config results in immediate error and shutdown.
 
 ## Planned Updates
-- Refactor `apipxy.py` to use the new config and logging patterns (no legacy imports, no in-code defaults).
-- Enforce strict config validation at startup.
-- Add more granular logging for request/response cycles and error conditions.
+
+
+## Implementation Continuation Plan: meta_channel and stream Objects (2025-08-26)
+
+This plan extends the successful category_group implementation to meta_channel and stream objects, ensuring schema-driven, canonical construction and ingestion. The new flow is fully consistent with category_group, and the injection point is the same: after a successful backend response in `apipxy.py`, during the discovery ingestion phase.
+
+### 1. Canonical Construction Functions
+1.1. Ensure `create_meta_channel_object(raw_obj)` and `create_stream_object(raw_obj)` exist in `utils/discovery.py`, mirroring the logic of `create_category_group_object`.
+1.2. For meta_channel, use the first present field from the schema's `canbeid` array for both `meta_channel_id` and `display_name`.
+1.3. For stream, use the URL as the canonical ID, as specified in the schema.
+1.4. Populate all required fields, and only update fields listed in `updatefields` on subsequent ingestions.
+
+### 2. Ingestion Pipeline Integration
+2.1. In `apipxy.py`, after a successful backend response (status 200, JSON), the code determines the category (e.g., category_group, meta_channel, stream) using `get_category_for_action(action)`.
+2.2. For each discovered object, the pipeline calls the appropriate canonical construction function before ingestion (e.g., `create_meta_channel_object` for meta_channel, `create_stream_object` for stream).
+2.3. Deduplication and upsert logic use canonical IDs, not TinyDB `doc_id`.
+
+### 3. Logging and Error Handling
+3.1. All errors, warnings, and info are logged using the canonical logging module.
+3.2. Passive JSONL logging captures full payloads for meta_channel and stream objects, as for category_group.
+
+### 4. Orphan and Relationship Handling
+4.1. For meta_channels, ensure `category_group_id` is set (or null if orphaned), as per schema.
+4.2. For streams, ensure `channel_id` is set (or null if orphaned), and only minimally record orphans as described in the docs.
+
+### 5. Testing and Validation
+5.1. Add or update test cases to cover meta_channel and stream ingestion, deduplication, and orphan handling.
+5.2. Validate that only fields in `updatefields` are updated on re-ingestion, and that canonical IDs are stable and correct.
+
+### 6. Documentation and Schema Sync
+6.1. Update `utils/dbschema.md` and any relevant README sections to reflect the completed implementation and any new edge cases or lessons learned.
+
+**Flow Injection Point:**
+The new process for meta_channel and stream objects joins the flow in `apipxy.py` immediately after a successful backend response and category determination, exactly as with category_group. The ingestion pipeline is category-agnostic and calls the correct canonical construction function for each object type.
 
 ## See Also
 - `../utils/config.py` for config access patterns
