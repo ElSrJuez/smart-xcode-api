@@ -1,0 +1,98 @@
+{
+  "version": 5,
+  "object_categories": [
+    {
+      "name": "category_group",
+      "friendly_name": "Category Group",
+      "actions": ["get_live_categories"],
+      "canbeid": ["category_name", "group-title"],
+      "canbeidentifier": ["category_name", "group-title", "category_id"],
+      "updatefields": ["identifiers", "last_seen"],
+      "fields": [
+        {"name": "category_group_id", "type": "string", "description": "Canonical, normalized identifier for the category group (e.g., from category_name or group-title)."},
+        {"name": "display_name", "type": "string", "description": "Human-friendly label for the category group (from source field)."},
+        {"name": "identifiers", "type": "list<object>", "object_fields": [
+          {"name": "field", "type": "string", "description": "Source field name (e.g., group-title, category_name, id, category_id, etc.)"},
+          {"name": "value", "type": "string", "description": "The value of the identifier from the source"}
+        ], "description": "All known field/value pairs (ids, names, aliases) from any source for deduplication and grouping."},
+        {"name": "include", "type": "boolean", "description": "Moderation toggle for API inclusion/exclusion."},
+        {"name": "first_seen", "type": "timestamp", "description": "Timestamp when this group was first discovered."},
+        {"name": "last_seen", "type": "timestamp", "description": "Timestamp when this group was last seen in source data."}
+      ]
+    },
+    {
+      "name": "meta_channel",
+      "friendly_name": "Channel",
+      "actions": ["get_live_channels","get_live_streams"],
+      "canbeid": ["name"],
+      "canbeidentifier": ["stream_id", "stream_type", "name", "epg_channel_id",  "stream_icon", "category_id"],
+      "updatefields": ["identifiers", "last_seen"],
+      "fields": [
+        {"name": "meta_channel_id", "type": "string", "description": "Canonical, normalized identifier for the meta channel."},
+        {"name": "display_name", "type": "string", "description": "Human-friendly label for the channel (from source field)."},
+        {"name": "category_group_id", "type": "string", "description": "Parent category group id (null if orphaned)."},
+        {"name": "identifiers", "type": "list<object>", "object_fields": [
+          {"name": "field", "type": "string", "description": "Source field name for channel identifier (e.g., tvg-id, name)"},
+          {"name": "value", "type": "string", "description": "Value of the identifier from the source."}
+        ], "description": "All known field/value pairs (ids, names, aliases) for this channel."},
+        {"name": "include", "type": "boolean", "description": "Moderation toggle for API inclusion/exclusion."},
+        {"name": "first_seen", "type": "timestamp", "description": "Timestamp when this channel was first discovered."},
+        {"name": "last_seen", "type": "timestamp", "description": "Timestamp when this channel was last seen in source data."}
+      ]
+    },
+    {
+      "name": "stream",
+      "friendly_name": "Stream",
+      "actions": ["get_live_streams"],
+      "updatefields": ["last_seen", "status"],
+      "fields": [
+        {"name": "channel_id", "type": "string", "description": "Parent channel id (null if orphaned)."},
+        {"name": "url", "type": "string", "description": "Unique Identifier, the stream endpoint URL"},
+        {"name": "status", "type": "object", "object_fields": [
+          {"name": "last_status", "type": "string", "description": "Last known status (e.g., working, error, geo-blocked)."},
+          {"name": "last_viewed", "type": "timestamp", "description": "Last successful viewed timestamp (optional)."},
+          {"name": "error_count", "type": "integer", "description": "Error counter (optional)."}
+        ], "description": "Status/quality object for this stream URL."},
+        {"name": "first_seen", "type": "timestamp", "description": "Timestamp when this stream was first discovered."},
+        {"name": "last_seen", "type": "timestamp", "description": "Timestamp when this stream was last seen in source data."},
+        {"name": "include", "type": "boolean", "description": "Moderation toggle for tag inclusion/exclusion."}
+      ]
+    },
+    {
+      "name": "include_exclude_tag",
+      "friendly_name": "Include/Exclude Tag",
+      "fields": [
+        {"name": "tag", "type": "string", "description": "Tag string used for inclusion or exclusion filtering."},
+        {"name": "type", "type": "string", "description": "Type of tag: inclusion or exclusion."},
+        {"name": "usage_contexts", "type": "list", "description": "List of contexts where this tag is used (e.g., channel, stream)."},
+        {"name": "include", "type": "boolean", "description": "Moderation toggle for tag inclusion/exclusion."},
+        {"name": "first_seen", "type": "timestamp", "description": "Timestamp when this tag was first discovered."},
+        {"name": "last_seen", "type": "timestamp", "description": "Timestamp when this tag was last seen in source data."}
+      ]
+    },
+    {
+      "name": "smart_grouping_substring",
+      "friendly_name": "Smart Grouping Substring",
+      "fields": [
+        {"name": "substring", "type": "string", "description": "Core substring used for grouping related names."},
+        {"name": "usage_contexts", "type": "list", "description": "List of contexts where this substring is used (e.g., channel, stream)."},
+        {"name": "include", "type": "boolean", "description": "Moderation toggle for substring inclusion/exclusion."},
+        {"name": "first_seen", "type": "timestamp", "description": "Timestamp when this substring was first discovered."},
+        {"name": "last_seen", "type": "timestamp", "description": "Timestamp when this substring was last seen in source data."}
+      ]
+    },
+    {
+      "name": "smart_filter_substring",
+      "friendly_name": "Smart Filter Substring",
+      "fields": [
+        {"name": "substring", "type": "string", "description": "Substring used for filtering objects (e.g., adult, VIP)."},
+        {"name": "type", "type": "string", "description": "Type of filter: inclusion or exclusion."},
+        {"name": "usage_contexts", "type": "list", "description": "List of contexts where this filter is used (e.g., channel, stream)."},
+        {"name": "include", "type": "boolean", "description": "Moderation toggle for filter inclusion/exclusion."},
+        {"name": "first_seen", "type": "timestamp", "description": "Timestamp when this filter was first discovered."},
+        {"name": "last_seen", "type": "timestamp", "description": "Timestamp when this filter was last seen in source data."}
+      ]
+    }
+  ],
+  "description": "This schema defines the object categories, their relationships, canonical identifiers, parent/child references, and moderation fields for passive discovery and admin control. Each object category includes a 'friendly_name' for admin display. Orphan handling: Programmes with no parent are discarded; streams/channels with a null parent reference are considered orphaned and are minimally recorded. The schema is a blueprint for discovery, grouping, and moderation—not a template for every record or a reflection of the raw data structure."
+}

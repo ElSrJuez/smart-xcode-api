@@ -149,6 +149,41 @@ def parse_m3u(m3u_content):
   except Exception as e:
     logmod.log_message('error', f"parse_m3u failed: {e}")
 
+
+def create_stream_object(raw_obj):
+  """
+  Synthesize a canonical, schema-compliant stream object from raw input.
+  Args:
+    raw_obj (dict): The raw stream object from XC API or M3U source.
+  Returns:
+    dict: A fully-formed, schema-compliant stream object.
+  Logs:
+    Canonically logs an informative INFO message on success, on failure the incoming object, if DEBUG the resulting object.
+  """
+  # The canonical ID for a stream is always the URL field
+  url = raw_obj.get('url')
+  if not url:
+    logmod.log_message('error', f"No 'url' field found in raw_obj for stream: {raw_obj}")
+    return None
+  channel_id = raw_obj.get('channel_id')
+  now = int(time.time())
+  canonical = {
+    "channel_id": channel_id,
+    "url": url,
+    "status": raw_obj.get('status', {}),
+    "first_seen": now,
+    "last_seen": now,
+    "include": True
+  }
+  # Check for any other required fields in the schema and log if missing
+  required_fields = dbops.get_schema_field('stream', 'fields')
+  for field in required_fields:
+    fname = field['name']
+    if fname not in canonical:
+      logmod.log_message('warning', f"Required field '{fname}' is missing from canonical stream object and has not been auto-filled.")
+  logmod.log_message('info', f"Successfully constructed canonical stream object: {canonical}")
+  return canonical
+
 def parse_xc(xc_json, category=None):
   """
   Parse XC API JSON and yield canonical objects (categories, channels, streams).
@@ -169,7 +204,13 @@ def parse_xc(xc_json, category=None):
       for cat in xc_json:
         yield create_category_group_object(cat)
       logmod.log_message('info', f"parse_xc completed for category={category}")
-    # Add similar logic for 'channel' and 'stream' as new canonical functions are implemented
+    elif category == 'stream':
+      if not isinstance(xc_json, list):
+        logmod.log_message('error', f"Expected list for stream, got {type(xc_json).__name__}. Incoming object: {xc_json}")
+        return
+      for stream in xc_json:
+        yield create_stream_object(stream)
+      logmod.log_message('info', f"parse_xc completed for category={category}")
     else:
       logmod.log_message('error', f"Unknown or unsupported category for parse_xc: {category}. Incoming object: {xc_json}")
       return

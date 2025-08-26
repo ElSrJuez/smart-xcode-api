@@ -10,9 +10,19 @@ venv.bak/
 *.egg-info/
 *.egg
 
+
+
 # Logs and database
-log/
-db/
+
+
+# Logs and database
+log/*
+!log/.gitkeep
+!log/*/.gitkeep
+!log/admin/.gitkeep
+!log/db/.gitkeep
+db/database/*
+!db/database/.gitkeep
 *.log
 
 # Credentials/config
