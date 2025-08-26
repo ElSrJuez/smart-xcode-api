@@ -1,3 +1,40 @@
+# Pipeline for ingesting XC live streams (meta_channels and streams)
+def ingest_xc_live_streams(raw_streams):
+  """
+  Ingests meta_channels and streams from a list of raw XC API stream objects.
+  Ensures meta_channels are ingested before streams, and streams are linked to their parent meta_channel.
+  Args:
+    raw_streams (list): List of raw stream objects from XC API.
+  Returns:
+    dict: Summary of ingestion counts.
+  """
+  meta_channel_ids_seen = set()
+  meta_channel_results = []
+  stream_results = []
+  # First pass: ingest all unique meta_channels
+  for raw in raw_streams:
+    meta_channel_obj = create_meta_channel_object(raw)
+    if meta_channel_obj is None:
+      continue
+    meta_channel_id = meta_channel_obj[_STREAM_PARENT_ID_FIELD]
+    if meta_channel_id not in meta_channel_ids_seen:
+      ingest_object('meta_channel', meta_channel_obj)
+      meta_channel_ids_seen.add(meta_channel_id)
+      meta_channel_results.append(meta_channel_id)
+  # Second pass: ingest all streams, passing canonical meta_channel_id (no fallback)
+  for raw in raw_streams:
+    meta_channel_obj = create_meta_channel_object(raw)
+    if meta_channel_obj is None:
+      continue
+    meta_channel_id = meta_channel_obj[_STREAM_PARENT_ID_FIELD]
+    stream_obj = create_stream_object(raw, meta_channel_id)
+    if stream_obj is not None:
+      ingest_object('stream', stream_obj)
+      stream_results.append(stream_obj['url'])
+  return {
+    'meta_channels_ingested': len(meta_channel_results),
+    'streams_ingested': len(stream_results)
+  }
 """
 discovery.py — Canonical Discovery and Parsing Logic
 
@@ -10,6 +47,12 @@ import m3u8
 import re
 import utils.dbops as dbops
 import time
+
+
+# Module-level private parent id field names (DRY)
+_STREAM_PARENT_ID_FIELD = 'meta_channel_id'
+_META_CHANNEL_PARENT_ID_FIELD = 'category_group_id'
+_CATEGORY_GROUP_ID_FIELD = 'category_group_id'
 
 # Canonical construction of a meta_channel object from raw input
 def create_meta_channel_object(raw_obj):
@@ -36,9 +79,9 @@ def create_meta_channel_object(raw_obj):
   identifiers = create_identifiers_object(raw_obj, 'meta_channel')
   now = int(time.time())
   canonical = {
-    "meta_channel_id": meta_channel_id,
+    _META_CHANNEL_PARENT_ID_FIELD: meta_channel_id,
     "display_name": display_name,
-    "category_group_id": raw_obj.get("category_group_id"),
+    _CATEGORY_GROUP_ID_FIELD: raw_obj.get(_CATEGORY_GROUP_ID_FIELD),
     "identifiers": identifiers,
     "first_seen": now,
     "last_seen": now,
@@ -74,7 +117,7 @@ def create_category_group_object(raw_obj):
     identifiers = create_identifiers_object(raw_obj, 'category_group')
     now = int(time.time())
     canonical = {
-      "category_group_id": category_group_id,
+      _CATEGORY_GROUP_ID_FIELD: category_group_id,
       "display_name": display_name,
       "identifiers": identifiers,
       "first_seen": now,
@@ -150,29 +193,31 @@ def parse_m3u(m3u_content):
     logmod.log_message('error', f"parse_m3u failed: {e}")
 
 
-def create_stream_object(raw_obj):
+
+def create_stream_object(raw_obj, meta_channel_id):
   """
   Synthesize a canonical, schema-compliant stream object from raw input.
   Args:
     raw_obj (dict): The raw stream object from XC API or M3U source.
+    meta_channel_id (str): Canonical meta_channel_id to use as parent. Must be provided.
   Returns:
     dict: A fully-formed, schema-compliant stream object.
   Logs:
     Canonically logs an informative INFO message on success, on failure the incoming object, if DEBUG the resulting object.
   """
-  # The canonical ID for a stream is always the URL field
   url = raw_obj.get('url')
   if not url:
     logmod.log_message('error', f"No 'url' field found in raw_obj for stream: {raw_obj}")
     return None
-  channel_id = raw_obj.get('channel_id')
-  now = int(time.time())
+  if not meta_channel_id:
+    logmod.log_message('error', f"No meta_channel_id provided for stream: {raw_obj}")
+    return None
   canonical = {
-    "channel_id": channel_id,
+    _STREAM_PARENT_ID_FIELD: meta_channel_id,
     "url": url,
     "status": raw_obj.get('status', {}),
-    "first_seen": now,
-    "last_seen": now,
+    "first_seen": int(time.time()),
+    "last_seen": int(time.time()),
     "include": True
   }
   # Check for any other required fields in the schema and log if missing
@@ -205,12 +250,8 @@ def parse_xc(xc_json, category=None):
         yield create_category_group_object(cat)
       logmod.log_message('info', f"parse_xc completed for category={category}")
     elif category == 'stream':
-      if not isinstance(xc_json, list):
-        logmod.log_message('error', f"Expected list for stream, got {type(xc_json).__name__}. Incoming object: {xc_json}")
-        return
-      for stream in xc_json:
-        yield create_stream_object(stream)
-      logmod.log_message('info', f"parse_xc completed for category={category}")
+      logmod.log_message('error', "Direct parse_xc for streams is not supported. Use the ingest_xc_live_streams pipeline instead.")
+      return
     else:
       logmod.log_message('error', f"Unknown or unsupported category for parse_xc: {category}. Incoming object: {xc_json}")
       return
@@ -239,8 +280,8 @@ def normalize_identifiers(obj):
   """
   logmod.log_message('info', "normalize_identifiers called")
   # If this is a category_group, ensure canonical id is present (from display_name)
-  if obj.get('display_name') and 'category_group_id' not in obj:
-    obj['category_group_id'] = canonical_category_group_id(obj['display_name'])
+  if obj.get('display_name') and _CATEGORY_GROUP_ID_FIELD not in obj:
+    obj[_CATEGORY_GROUP_ID_FIELD] = canonical_category_group_id(obj['display_name'])
   # Only build identifiers from incoming data (not canonical fields)
   if 'identifiers' not in obj:
     obj['identifiers'] = []

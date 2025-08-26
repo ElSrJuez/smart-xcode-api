@@ -46,7 +46,7 @@
       "actions": ["get_live_streams"],
       "updatefields": ["last_seen", "status"],
       "fields": [
-        {"name": "channel_id", "type": "string", "description": "Parent channel id (null if orphaned)."},
+        {"name": "meta_channel_id", "type": "string", "description": "Parent channel id (null if orphaned)."},
         {"name": "url", "type": "string", "description": "Unique Identifier, the stream endpoint URL"},
         {"name": "status", "type": "object", "object_fields": [
           {"name": "last_status", "type": "string", "description": "Last known status (e.g., working, error, geo-blocked)."},
