@@ -1,40 +1,3 @@
-# Pipeline for ingesting XC live streams (meta_channels and streams)
-def ingest_xc_live_streams(raw_streams):
-  """
-  Ingests meta_channels and streams from a list of raw XC API stream objects.
-  Ensures meta_channels are ingested before streams, and streams are linked to their parent meta_channel.
-  Args:
-    raw_streams (list): List of raw stream objects from XC API.
-  Returns:
-    dict: Summary of ingestion counts.
-  """
-  meta_channel_ids_seen = set()
-  meta_channel_results = []
-  stream_results = []
-  # First pass: ingest all unique meta_channels
-  for raw in raw_streams:
-    meta_channel_obj = create_meta_channel_object(raw)
-    if meta_channel_obj is None:
-      continue
-    meta_channel_id = meta_channel_obj[_STREAM_PARENT_ID_FIELD]
-    if meta_channel_id not in meta_channel_ids_seen:
-      ingest_object('meta_channel', meta_channel_obj)
-      meta_channel_ids_seen.add(meta_channel_id)
-      meta_channel_results.append(meta_channel_id)
-  # Second pass: ingest all streams, passing canonical meta_channel_id (no fallback)
-  for raw in raw_streams:
-    meta_channel_obj = create_meta_channel_object(raw)
-    if meta_channel_obj is None:
-      continue
-    meta_channel_id = meta_channel_obj[_STREAM_PARENT_ID_FIELD]
-    stream_obj = create_stream_object(raw, meta_channel_id)
-    if stream_obj is not None:
-      ingest_object('stream', stream_obj)
-      stream_results.append(stream_obj['url'])
-  return {
-    'meta_channels_ingested': len(meta_channel_results),
-    'streams_ingested': len(stream_results)
-  }
 """
 discovery.py — Canonical Discovery and Parsing Logic
 
@@ -54,18 +17,19 @@ _STREAM_PARENT_ID_FIELD = 'meta_channel_id'
 _META_CHANNEL_PARENT_ID_FIELD = 'category_group_id'
 _CATEGORY_GROUP_ID_FIELD = 'category_group_id'
 
-# Canonical construction of a meta_channel object from raw input
-def create_meta_channel_object(raw_obj):
+
+# Canonical construction of a meta_channel object from raw input and parent category_group_id
+def create_meta_channel_object(raw_obj, category_group_id):
   """
-  Synthesize a canonical, schema-compliant meta_channel object from raw input.
+  Synthesize a canonical, schema-compliant meta_channel object from raw input and parent category_group_id.
   Args:
     raw_obj (dict): The raw channel object from XC API or M3U source.
+    category_group_id (str): Canonical parent category_group_id (from context or request).
   Returns:
     dict: A fully-formed, schema-compliant meta_channel object.
   Logs:
     Canonically logs an informative INFO message on success, on failure the incoming object, if DEBUG the resulting object.
   """
-  # Determine the best source field for display_name and meta_channel_id using canbeid from schema
   canbeid_fields = dbops.get_schema_field('meta_channel', 'canbeid')
   display_name = None
   for field in canbeid_fields:
@@ -81,13 +45,12 @@ def create_meta_channel_object(raw_obj):
   canonical = {
     _META_CHANNEL_PARENT_ID_FIELD: meta_channel_id,
     "display_name": display_name,
-    _CATEGORY_GROUP_ID_FIELD: raw_obj.get(_CATEGORY_GROUP_ID_FIELD),
+    _CATEGORY_GROUP_ID_FIELD: category_group_id,
     "identifiers": identifiers,
     "first_seen": now,
     "last_seen": now,
     "include": True
   }
-  # Check for any other required fields in the schema and log if missing
   required_fields = dbops.get_schema_field('meta_channel', 'fields')
   for field in required_fields:
     fname = field['name']
@@ -96,7 +59,6 @@ def create_meta_channel_object(raw_obj):
   logmod.log_message('info', f"Successfully constructed canonical meta_channel object: {canonical}")
   return canonical
 
-# Canonical construction of a category_group object from raw input
 def create_category_group_object(raw_obj):
   """
   Synthesize a canonical, schema-compliant category_group object from raw input.
@@ -140,7 +102,6 @@ def create_category_group_object(raw_obj):
     return None
 
 #
-# Canonical construction of an identifiers list from raw input
 def create_identifiers_object(raw_obj, object_categories_object_name):
   """
   Canonically construct the identifiers list for an object, using the canbeidentifier fields from the schema.
@@ -161,6 +122,30 @@ def create_identifiers_object(raw_obj, object_categories_object_name):
     if field in raw_obj and raw_obj[field] is not None:
       identifiers.append({"field": field, "value": str(raw_obj[field])})
   return identifiers
+
+# Canonical parent ID selection for meta_channel: prefer request context, else raw object, else log error
+def get_canonical_category_group_id_for_meta_channel(raw_obj, request_context=None):
+  """
+  Determine the canonical parent category_group_id for a meta_channel object.
+  Args:
+    raw_obj (dict): The raw channel object from XC API or M3U source.
+    request_context (dict, optional): Context dict, e.g., query params or API args.
+  Returns:
+    str: Canonical, normalized category_group_id, or None if not found.
+  """
+  # 1. Prefer explicit parent ID from request context (e.g., category_id in query params)
+  category_id = None
+  if request_context and 'category_id' in request_context and request_context['category_id']:
+    category_id = request_context['category_id']
+  # 2. Otherwise, extract from raw object
+  elif 'category_id' in raw_obj and raw_obj['category_id']:
+    category_id = raw_obj['category_id']
+  # 3. If still not found, log error
+  if not category_id:
+    logmod.log_message('error', f"No category_group_id found for meta_channel: {raw_obj} | context={request_context}")
+    return None
+  # Canonicalize
+  return canonical_category_group_id(str(category_id))
 
 def parse_m3u(m3u_content):
   """
@@ -220,7 +205,6 @@ def create_stream_object(raw_obj, meta_channel_id):
     "last_seen": int(time.time()),
     "include": True
   }
-  # Check for any other required fields in the schema and log if missing
   required_fields = dbops.get_schema_field('stream', 'fields')
   for field in required_fields:
     fname = field['name']
@@ -229,12 +213,14 @@ def create_stream_object(raw_obj, meta_channel_id):
   logmod.log_message('info', f"Successfully constructed canonical stream object: {canonical}")
   return canonical
 
-def parse_xc(xc_json, category=None):
+
+def parse_xc(xc_json, category=None, parent_id=None):
   """
-  Parse XC API JSON and yield canonical objects (categories, channels, streams).
+  Parse XC API JSON and yield canonical objects (category_group, meta_channel, stream).
   Args:
     xc_json (dict or list): Raw XC API response.
-    category (str): Category name (e.g., 'category_group', 'channel', 'stream').
+    category (str): Category name (e.g., 'category_group', 'meta_channel', 'stream').
+    parent_id (str): Canonical parent ID (category_group_id for meta_channel, meta_channel_id for stream).
   Yields:
     dict: Canonical object.
   Logs:
@@ -249,9 +235,28 @@ def parse_xc(xc_json, category=None):
       for cat in xc_json:
         yield create_category_group_object(cat)
       logmod.log_message('info', f"parse_xc completed for category={category}")
+    elif category == 'meta_channel':
+      if not isinstance(xc_json, list):
+        logmod.log_message('error', f"Expected list for meta_channel, got {type(xc_json).__name__}. Incoming object: {xc_json}")
+        return
+      for ch in xc_json:
+        parent_id = get_canonical_category_group_id_for_meta_channel(ch)
+        logmod.log_message('debug', f"parse_xc: meta_channel parent_id resolved as {parent_id} for raw object: {ch}")
+        if not parent_id:
+          logmod.log_message('error', f"Skipping meta_channel due to missing parent category_group_id: {ch}")
+          continue
+        yield create_meta_channel_object(ch, parent_id)
+      logmod.log_message('info', f"parse_xc completed for category={category}")
     elif category == 'stream':
-      logmod.log_message('error', "Direct parse_xc for streams is not supported. Use the ingest_xc_live_streams pipeline instead.")
-      return
+      if not isinstance(xc_json, list):
+        logmod.log_message('error', f"Expected list for stream, got {type(xc_json).__name__}. Incoming object: {xc_json}")
+        return
+      if not parent_id:
+        logmod.log_message('error', f"No parent meta_channel_id provided for stream parsing.")
+        return
+      for s in xc_json:
+        yield create_stream_object(s, parent_id)
+      logmod.log_message('info', f"parse_xc completed for category={category}")
     else:
       logmod.log_message('error', f"Unknown or unsupported category for parse_xc: {category}. Incoming object: {xc_json}")
       return

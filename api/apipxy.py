@@ -1,4 +1,4 @@
-from utils.discovery import parse_xc, ingest_object
+from utils.discovery import parse_xc, ingest_object, get_canonical_category_group_id_for_meta_channel
 from utils.dbops import get_category_for_action
 # This is a simple API reverse proxy based on FastAPI.
 # Main design parameters are transparency and simplicity.
@@ -148,7 +148,13 @@ async def proxy(request: Request, path: str):
 			category = get_category_for_action(action)
 			if data and category:
 				try:
-					discovered = list(parse_xc(data, category=category))
+					if category == 'meta_channel':
+						parent_id = None
+						if isinstance(data, list) and data:
+							parent_id = get_canonical_category_group_id_for_meta_channel(data[0], request_context=params)
+						discovered = list(parse_xc(data, category=category, parent_id=parent_id))
+					else:
+						discovered = list(parse_xc(data, category=category))
 					count = 0
 					for obj in discovered:
 						try:

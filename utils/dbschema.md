@@ -1,3 +1,16 @@
+# Parked Concept: Canonical Parent Association Logic for meta_channel and stream (2025-08-30)
+
+## Canonical Parent ID Selection (Multi-Source)
+
+For any object type that requires a parent (e.g., meta_channel, stream), the canonical parent association function must select the best/most authoritative parent ID using all available sources, in this order:
+
+1. Prefer the explicit parent ID from the request context (e.g., URL or API parameter such as category_id=499).
+2. Otherwise, extract or synthesize the parent ID from the raw object's fields (e.g., category_id in the raw object).
+3. Optionally, fall back to a default or log an error if neither is available.
+
+This ensures robust, schema-driven, and context-aware parent association, supporting ingestion and deduplication regardless of data source or request context.
+
+---
 # Canonical Database & Schema: 2025-08-24 Update
 
 
@@ -149,6 +162,26 @@ This table documents the canonical order of implementation and the responsibilit
 
 
 ---
+Canonical Parent Association Functions (2025-08-26)
+Canonical Parent Determination for meta_channel and stream
+To ensure robust, schema-driven parent association, each object type that requires a parent (meta_channel, stream) must use a canonical function to determine its parent ID. These functions must:
+
+Accept both the raw object and any relevant parent ID from the request context (e.g., URL or API parameter).
+Apply a schema-driven set of rules to select the best/most authoritative parent ID:
+Prefer the explicit parent ID from the request if present and valid.
+Otherwise, extract or synthesize the parent ID from the raw object's fields (e.g., category_id for meta_channel, or meta_channel-identifying fields for stream).
+Optionally, fall back to a default or log an error if neither is available.
+Always return the canonical, normalized parent ID for that object, as defined by the schema.
+Example: Canonical Parent for meta_channel
+Parent: category_group (ID: category_group_id)
+Sources: request/URL parameter category_id, or raw meta_channel object's category_id field
+Rule: Use request/URL parameter if present and valid, else use raw object's field, else log error/fallback
+Example: Canonical Parent for stream
+Parent: meta_channel (ID: meta_channel_id)
+Sources: request/URL parameter (rare), or synthesize from raw stream object's identifying fields (e.g., name, stream_id)
+Rule: Use request/URL parameter if present and valid, else synthesize from raw object, else log error/fallback
+This approach ensures all parent-child relationships are established in a DRY, schema-driven, and context-aware way, supporting robust ingestion and deduplication regardless of data source or request context.
+
 
 ## Database Architecture & Management (Agreements)
 
